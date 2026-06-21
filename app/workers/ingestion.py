@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timezone
 
 import feedparser
@@ -23,10 +22,8 @@ def fetch_feed(feed_url: str) -> list[dict]:
     entries = []
     for e in parsed.entries:
         published_at = None
-        if getattr(e, "published_parsed", None):
-            published_at = datetime.fromtimestamp(
-                time.mktime(e.published_parsed), tz=timezone.utc
-            )
+        if e.get("published_parsed"):
+            published_at = datetime(*e.get("published_parsed")[:6], tzinfo=timezone.utc)
         entries.append({
             "link": e.get("link"),
             "title": e.get("title"),
