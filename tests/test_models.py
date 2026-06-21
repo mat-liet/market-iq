@@ -23,18 +23,22 @@ def test_duplicate_url_rejected(session):
     session.add(Article(url="https://dup.com", title="A",
                         published_at=datetime.now(timezone.utc)))
     session.flush()
+    nested = session.begin_nested()
     session.add(Article(url="https://dup.com", title="B",
                         published_at=datetime.now(timezone.utc)))
     with pytest.raises(IntegrityError):
         session.flush()
+    nested.rollback()
 
 
 def test_duplicate_ticker_rejected(session):
     session.add(Company(name="NVIDIA", ticker="NVDA", normalized_name="nvidia"))
     session.flush()
+    nested = session.begin_nested()
     session.add(Company(name="Nvidia Corp", ticker="NVDA", normalized_name="nvidia corp"))
     with pytest.raises(IntegrityError):
         session.flush()
+    nested.rollback()
 
 
 def test_null_ticker_allows_multiple(session):
