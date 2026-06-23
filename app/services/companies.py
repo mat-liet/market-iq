@@ -11,6 +11,12 @@ _LEGAL_SUFFIXES = {
 def normalize_company_name(name: str) -> str:
     cleaned = re.sub(r"[^\w\s]", " ", name.lower())
     tokens = [t for t in cleaned.split() if t not in _LEGAL_SUFFIXES]
+    # If every token is a legal suffix (e.g. "Group Holdings"), stripping them
+    # all would yield "" — which collapses unrelated companies under the
+    # non-partial unique index on normalized_name. Keep the suffix tokens
+    # rather than produce an empty key.
+    if not tokens:
+        tokens = cleaned.split()
     return " ".join(tokens).strip()
 
 
