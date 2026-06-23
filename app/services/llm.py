@@ -79,6 +79,6 @@ def call_gemini(client, model: str, prompt: str) -> str:
     response = client.models.generate_content(
         model=model,
         contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=300),
+        config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=1024),
     )
     return response.text
