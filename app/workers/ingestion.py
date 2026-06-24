@@ -6,11 +6,11 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.models import Article
 from app.services.body_extractor import BodyExtractor
 
-# Config-driven feeds. NOTE: these URLs are NOT guaranteed live — Reuters
-# discontinued public RSS, and other paths shift. Verify with verify_feed()
-# before relying on any of them; swap in working financial-news feeds as needed.
+# Config-driven feeds. NOTE: these URLs are NOT guaranteed live — feed paths
+# shift over time. Verify with verify_feed() before relying on any of them;
+# swap in working financial-news feeds as needed.
 RSS_SOURCES = {
-    "reuters": "https://feeds.reuters.com/reuters/businessNews",
+    "cnbc": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
     "yahoo": "https://finance.yahoo.com/rss/",
     "marketwatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
 }
