@@ -13,5 +13,5 @@ class Settings:
         return cls(
             database_url=os.environ["DATABASE_URL"],
             gemini_api_key=os.environ.get("GEMINI_API_KEY", "dummy-key-for-tests"),
-            gemini_model=os.environ.get("GEMINI_MODEL", "gemini-flash-latest"),
+            gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         )

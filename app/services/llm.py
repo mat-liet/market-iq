@@ -54,19 +54,27 @@ def parse_response(raw: str | None) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def _is_rate_limit(exc: Exception) -> bool:
+def _is_transient(exc: Exception) -> bool:
+    """Return True for transient errors that warrant a retry: rate limits and
+    transient server errors. Markers match how the google-genai SDK formats
+    these statuses ("429 RESOURCE_EXHAUSTED", "503 UNAVAILABLE", "500 INTERNAL"),
+    using compound tokens so a bare code or word inside an unrelated error
+    message (e.g. a JSON body mentioning "500") does not trigger a false retry."""
     msg = str(exc)
-    return "429" in msg or "RESOURCE_EXHAUSTED" in msg
+    return any(marker in msg for marker in (
+        "RESOURCE_EXHAUSTED", "UNAVAILABLE", "500 INTERNAL", "429", "503"
+    ))
 
 
 def call_with_retry(fn: Callable[[], str], retries: int = 3,
                     base_delay: float = 2.0, sleeper: Callable[[float], None] = time.sleep) -> str:
-    """Call fn, retrying with exponential backoff only on rate-limit (429) errors."""
+    """Call fn, retrying with exponential backoff on transient errors
+    (rate limits and transient server errors)."""
     for attempt in range(retries + 1):
         try:
             return fn()
         except Exception as exc:
-            if _is_rate_limit(exc) and attempt < retries:
+            if _is_transient(exc) and attempt < retries:
                 sleeper(base_delay * (2 ** attempt))
                 continue
             raise
