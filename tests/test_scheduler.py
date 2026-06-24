@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 from app.workers.scheduler import build_scheduler, run_ingestion
@@ -16,7 +17,7 @@ def test_job_intervals():
     assert intervals["classification"] == 15 * 60
 
 
-def test_run_ingestion_isolates_failing_feed():
+def test_run_ingestion_isolates_failing_feed(caplog):
     """One failing feed must not prevent remaining feeds from being ingested."""
     fake_sources = {
         "bad_source": "http://bad.example.com/rss",
@@ -41,6 +42,7 @@ def test_run_ingestion_isolates_failing_feed():
         patch("app.workers.scheduler.ingest_entries", side_effect=fake_ingest_entries),
         patch("app.workers.scheduler.SessionLocal", return_value=mock_session),
         patch("app.workers.scheduler.TrafilaturaExtractor", return_value=MagicMock()),
+        caplog.at_level(logging.WARNING, logger="app.workers.scheduler"),
     ):
         # Must not raise even though the first feed fails
         run_ingestion()
@@ -49,3 +51,5 @@ def test_run_ingestion_isolates_failing_feed():
     assert "good_source" in ingest_calls
     # The bad source must NOT have reached ingest_entries (it raised before that)
     assert "bad_source" not in ingest_calls
+    # The failure is surfaced as a warning, not silently swallowed
+    assert "bad_source" in caplog.text
