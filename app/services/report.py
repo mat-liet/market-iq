@@ -10,7 +10,6 @@ def wow_growth_pct(this_week: int, last_week: int) -> float:
 
 
 def count_articles(session, theme_name: str, start: datetime, end: datetime) -> int:
-    session.flush()
     row = session.execute(text("""
         SELECT COUNT(DISTINCT a.id)
         FROM articles a
@@ -23,7 +22,6 @@ def count_articles(session, theme_name: str, start: datetime, end: datetime) -> 
 
 
 def top_companies(session, theme_name: str, start: datetime, end: datetime, limit: int = 5):
-    session.flush()
     rows = session.execute(text("""
         SELECT c.name, c.ticker, COUNT(*) AS mention_count
         FROM article_companies ac
@@ -44,7 +42,6 @@ def emerging_associations(session, theme_name: str, now: datetime | None = None)
     """Companies associated with the theme in the last 7 days that had NO
     association in the prior 3 weeks (days 8–28)."""
     now = now or datetime.now(timezone.utc)
-    session.flush()
     rows = session.execute(text("""
         SELECT c.name, c.ticker, COUNT(*) AS mention_count
         FROM article_companies ac
@@ -78,16 +75,18 @@ def emerging_associations(session, theme_name: str, now: datetime | None = None)
 
 
 def top_articles(session, theme_name: str, start: datetime, end: datetime, limit: int = 3):
-    session.flush()
+    # Group by article so a multi-company article appears once; importance is
+    # per article_company row, so take the max across the article's companies.
     rows = session.execute(text("""
-        SELECT DISTINCT a.title, a.url, ac.importance
+        SELECT a.title, a.url, MAX(ac.importance) AS importance
         FROM articles a
         JOIN article_themes at ON at.article_id = a.id
         JOIN themes t ON t.id = at.theme_id
         LEFT JOIN article_companies ac ON ac.article_id = a.id
         WHERE t.name = :theme
           AND a.published_at >= :start AND a.published_at < :end
-        ORDER BY ac.importance DESC NULLS LAST
+        GROUP BY a.id, a.title, a.url
+        ORDER BY MAX(ac.importance) DESC NULLS LAST
         LIMIT :limit
     """), {"theme": theme_name, "start": start, "end": end, "limit": limit}).mappings()
     return [dict(r) for r in rows]
