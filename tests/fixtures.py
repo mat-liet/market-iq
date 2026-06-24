@@ -21,3 +21,31 @@ def feed_entry(link, title, summary="", published_at=None):
 
 
 FIXED_NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
+
+
+class _FakeResponse:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeModels:
+    def __init__(self, responses, error=None):
+        self._responses = list(responses)
+        self._error = error
+        self.calls = 0
+
+    def generate_content(self, model, contents, config):
+        self.calls += 1
+        if self._error is not None and self.calls <= self._error["times"]:
+            raise RuntimeError(self._error["message"])
+        return _FakeResponse(self._responses.pop(0))
+
+
+class FakeGeminiClient:
+    """Mimics google.genai.Client: exposes .models.generate_content.
+    `responses` is a list of raw text strings returned in order.
+    `error` optionally raises for the first N calls, e.g.
+    {"times": 1, "message": "429 RESOURCE_EXHAUSTED"}."""
+
+    def __init__(self, responses, error=None):
+        self.models = _FakeModels(responses, error)
