@@ -31,7 +31,7 @@ def test_classifies_and_marks_processed(session):
     article = _add_article(session)
     client = FakeGeminiClient([GOOD])
 
-    n = classify_batch(session, client, "gemini-flash-latest", sleeper=lambda s: None)
+    n = classify_batch(session, client, "gemini-2.5-flash-lite", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
