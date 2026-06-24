@@ -2,7 +2,9 @@ from app.workers.ingestion import RSS_SOURCES, fetch_feed
 
 
 def test_three_sources_configured():
-    assert set(RSS_SOURCES) >= {"cnbc", "yahoo", "marketwatch"}
+    # Equality (not superset) so an accidentally added/restored dead feed —
+    # which verify_feed would hit on every ingestion run — fails the test.
+    assert set(RSS_SOURCES) == {"cnbc", "yahoo", "marketwatch"}
 
 
 def test_parses_a_static_feed(monkeypatch):
@@ -18,4 +20,5 @@ def test_parses_a_static_feed(monkeypatch):
 
     entries = fetch_feed("https://whatever")
     assert entries[0]["link"] == "https://x.com/1"
+    assert entries[0]["title"] == "T"
     assert entries[0]["published_at"] is None
