@@ -12,6 +12,17 @@ from app.services.body_extractor import TrafilaturaExtractor
 
 logger = logging.getLogger(__name__)
 
+_gemini_client = None
+
+
+def _get_gemini_client(settings: Settings):
+    """Lazily build a single google-genai client and reuse it across runs so we
+    don't leak an httpx connection pool on every scheduled classification."""
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=settings.gemini_api_key)
+    return _gemini_client
+
 
 def run_ingestion() -> None:
     extractor = TrafilaturaExtractor()
@@ -26,7 +37,7 @@ def run_ingestion() -> None:
 
 def run_classification() -> None:
     settings = Settings.from_env()
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = _get_gemini_client(settings)
     with SessionLocal() as session:
         classify_batch(session, client, settings.gemini_model)
 

@@ -1,7 +1,10 @@
 import json
 from datetime import datetime, timezone
 
-from app.workers.classification import classify_batch
+from sqlalchemy import text
+
+import app.workers.classification as classification
+from app.workers.classification import classify_batch, store_classification
 from app.services.taxonomy import seed_taxonomy
 from app.db.models import (
     Article, Company, ArticleTheme, ArticleCompany, ClassificationLog,
@@ -126,3 +129,132 @@ def test_call_failure_isolates_article(session):
     assert article2.processed is True
     assert session.query(ClassificationLog).count() == 1
     assert session.query(ArticleTheme).count() == 1
+
+
+# Final-review Critical #1: malformed-but-plausible LLM output must not poison
+# the queue. The model can return duplicate companies/themes within one article
+# or out-of-range scalars; persisting these naively raises IntegrityError on
+# commit, leaving the article unprocessed and re-selected forever.
+
+def test_duplicate_company_in_one_article_stored_once(session):
+    seed_taxonomy(session)
+    article = _add_article(session)
+    payload = json.dumps({
+        "themes": [],
+        "companies": [
+            {"name": "NVIDIA", "ticker": "NVDA"},
+            {"name": "Nvidia Corp", "ticker": "NVDA"},  # same company
+        ],
+        "sentiment": "positive", "importance": 7, "reason": "x",
+    })
+    client = FakeGeminiClient([payload])
+
+    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+
+    assert n == 1
+    assert session.get(Article, article.id).processed is True
+    assert session.query(ArticleCompany).count() == 1
+    assert session.query(Company).filter_by(ticker="NVDA").count() == 1
+
+
+def test_duplicate_theme_in_one_article_stored_once(session):
+    seed_taxonomy(session)
+    article = _add_article(session)
+    payload = json.dumps({
+        "themes": [
+            {"name": "AI Infrastructure", "confidence": 0.9},
+            {"name": "AI Infrastructure", "confidence": 0.5},  # repeated
+        ],
+        "companies": [], "sentiment": "neutral", "importance": 5, "reason": "x",
+    })
+    client = FakeGeminiClient([payload])
+
+    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+
+    assert n == 1
+    assert session.get(Article, article.id).processed is True
+    assert session.query(ArticleTheme).count() == 1
+
+
+def test_out_of_range_importance_is_dropped(session):
+    seed_taxonomy(session)
+    article = _add_article(session)
+    payload = json.dumps({
+        "themes": [],
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
+        "sentiment": "positive", "importance": 12, "reason": "x",  # > 10
+    })
+    client = FakeGeminiClient([payload])
+
+    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+
+    assert n == 1
+    assert session.get(Article, article.id).processed is True
+    row = session.query(ArticleCompany).one()
+    assert row.importance is None  # invalid value dropped, not persisted
+
+
+def test_invalid_sentiment_is_dropped(session):
+    seed_taxonomy(session)
+    article = _add_article(session)
+    payload = json.dumps({
+        "themes": [],
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
+        "sentiment": "mixed", "importance": 6, "reason": "x",  # not in enum
+    })
+    client = FakeGeminiClient([payload])
+
+    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+
+    assert n == 1
+    assert session.get(Article, article.id).processed is True
+    row = session.query(ArticleCompany).one()
+    assert row.sentiment is None
+
+
+def test_persist_failure_isolates_article(engine, monkeypatch):
+    """If persistence still raises (e.g. an unforeseen IntegrityError), the
+    article must be marked processed and logged parsed_ok=False — never left
+    to be retried forever — and the batch must continue.
+
+    This uses a dedicated real-transaction session (not the shared savepoint
+    fixture) because the behaviour under test is exactly that classify_batch's
+    in-loop rollback discards only the failed article's writes while rows
+    committed earlier survive — which the connection-bound savepoint fixture
+    cannot represent (its rollback unwinds the whole outer transaction)."""
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True, expire_on_commit=False)
+    sess = Session()
+    try:
+        seed_taxonomy(sess)
+        bad = _add_article(sess, "https://iso.com/1")
+        _add_article(sess, "https://iso.com/2")
+        sess.commit()  # durable, like articles committed by the ingestion worker
+
+        calls = {"n": 0}
+        real_store = classification.store_classification
+
+        def flaky_store(s, art, result):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ValueError("simulated persistence failure")
+            return real_store(s, art, result)
+
+        monkeypatch.setattr(classification, "store_classification", flaky_store)
+        client = FakeGeminiClient([GOOD, GOOD])
+
+        n = classify_batch(sess, client, "m", sleeper=lambda s: None)
+
+        assert n == 2  # both articles end up processed; batch not aborted
+        assert sess.get(Article, bad.id).processed is True
+        bad_log = sess.query(ClassificationLog).filter_by(article_id=bad.id).one()
+        assert bad_log.parsed_ok is False  # failure recorded, not retried forever
+    finally:
+        # Real commits above — purge all rows so other tests start clean.
+        sess.rollback()
+        for tbl in ("article_companies", "article_themes", "classification_log",
+                    "companies", "themes", "articles"):
+            sess.execute(text(f"DELETE FROM {tbl}"))
+        sess.commit()
+        sess.close()
