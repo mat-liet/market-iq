@@ -57,12 +57,13 @@ def parse_response(raw: str | None) -> dict | None:
 def _is_transient(exc: Exception) -> bool:
     """Return True for transient errors that warrant a retry: rate limits and
     transient server errors. Markers match how the google-genai SDK formats
-    these statuses ("429 RESOURCE_EXHAUSTED", "503 UNAVAILABLE", "500 INTERNAL"),
-    using compound tokens so a bare code or word inside an unrelated error
-    message (e.g. a JSON body mentioning "500") does not trigger a false retry."""
+    these statuses ("429 RESOURCE_EXHAUSTED", "503 UNAVAILABLE", "500 INTERNAL").
+    All markers are compound (status code + status name) so a bare code or word
+    appearing inside an unrelated error message (e.g. a JSON body mentioning
+    "503") does not trigger a false retry."""
     msg = str(exc)
     return any(marker in msg for marker in (
-        "RESOURCE_EXHAUSTED", "UNAVAILABLE", "500 INTERNAL", "429", "503"
+        "429 RESOURCE_EXHAUSTED", "503 UNAVAILABLE", "500 INTERNAL",
     ))
 
 

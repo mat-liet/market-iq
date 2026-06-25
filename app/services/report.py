@@ -50,7 +50,8 @@ def emerging_associations(session, theme_name: str, now: datetime | None = None)
         JOIN themes t ON t.id = at.theme_id
         WHERE t.name = :theme
           AND ac.article_id IN (
-              SELECT id FROM articles WHERE published_at >= :recent_start
+              SELECT id FROM articles
+              WHERE published_at >= :recent_start AND published_at < :now
           )
           AND c.id NOT IN (
               SELECT ac2.company_id
@@ -68,6 +69,7 @@ def emerging_associations(session, theme_name: str, now: datetime | None = None)
         ORDER BY mention_count DESC
     """), {
         "theme": theme_name,
+        "now": now,
         "recent_start": now - timedelta(days=7),
         "prior_start": now - timedelta(days=28),
     }).mappings()

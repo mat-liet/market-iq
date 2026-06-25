@@ -61,6 +61,21 @@ def test_retry_reraises_non_rate_limit_errors_immediately():
     assert sleeps == []  # no backoff for non-429 errors
 
 
+def test_retry_does_not_fire_on_bare_code_in_unrelated_message():
+    """A status code embedded in unrelated text (e.g. a JSON body) must not be
+    mistaken for a transient status and retried."""
+    def boom():
+        raise ValueError('bad request: {"count": 503, "id": 429}')
+
+    sleeps = []
+    try:
+        call_with_retry(boom, retries=3, sleeper=sleeps.append)
+        assert False, "should have raised"
+    except ValueError:
+        pass
+    assert sleeps == []  # not treated as transient
+
+
 def test_retry_succeeds_after_503():
     calls = {"n": 0}
 

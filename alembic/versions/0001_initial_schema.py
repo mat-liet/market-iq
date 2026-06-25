@@ -48,8 +48,8 @@ def upgrade():
     CREATE TABLE article_companies (
         article_id  UUID REFERENCES articles(id),
         company_id  UUID REFERENCES companies(id),
-        sentiment   TEXT CHECK (sentiment IN ('positive', 'negative', 'neutral')),
-        importance  INT CHECK (importance BETWEEN 1 AND 10),
+        sentiment   TEXT CONSTRAINT ck_sentiment CHECK (sentiment IN ('positive', 'negative', 'neutral')),
+        importance  INT CONSTRAINT ck_importance CHECK (importance BETWEEN 1 AND 10),
         PRIMARY KEY (article_id, company_id)
     );
 
