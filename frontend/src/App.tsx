@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { api, type DailyReport } from './api'
+import { api, toNarrativeRows, type DailyReport, type NarrativeRow } from './api'
+import { Header } from './components/Header'
+import { Overview, type OverviewSort } from './components/Overview'
+import styles from './App.module.css'
 
-// Minimal placeholder shell. The real dashboard UI is being designed separately;
-// this only proves the app is wired to the read API. Styling is intentionally
-// bare until the design direction is settled.
-function App() {
+export type View = 'overview' | 'detail' | 'company'
+
+export default function App() {
   const [report, setReport] = useState<DailyReport | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<View>('overview')
+  const [activeTheme, setActiveTheme] = useState<string | null>(null)
+  const [overviewSort, setOverviewSort] = useState<OverviewSort>('accel')
 
   useEffect(() => {
     api
@@ -15,37 +20,47 @@ function App() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
+  function go(next: View, theme: string | null = activeTheme) {
+    setView(next)
+    setActiveTheme(theme)
+    window.scrollTo(0, 0)
+  }
+
+  const rows: NarrativeRow[] = report ? toNarrativeRows(report) : []
+
   return (
-    <main style={{ maxWidth: 720, margin: '0 auto', padding: '2rem' }}>
-      <h1>Market Narrative Intelligence</h1>
-      <p>Dashboard scaffold — wired to the read API.</p>
+    <>
+      <Header
+        generatedAt={report?.generated_at ?? null}
+        view={view}
+        activeTheme={activeTheme}
+        onLogo={() => go('overview', null)}
+        onTheme={() => go('detail')}
+      />
 
       {error && (
-        <p role="alert">
+        <div className={styles.status} role="alert">
           Could not reach the API ({error}). Start the backend with{' '}
           <code>uvicorn app.main:app</code> on port 8000.
-        </p>
+        </div>
       )}
 
-      {!report && !error && <p>Loading daily report…</p>}
+      {!report && !error && <div className={styles.status}>Loading daily report…</div>}
 
-      {report && (
-        <>
-          <p>
-            Report generated at <time>{report.generated_at}</time>.{' '}
-            {Object.keys(report.narratives).length} narratives tracked.
-          </p>
-          <ul>
-            {Object.entries(report.narratives).map(([name, n]) => (
-              <li key={name}>
-                {name} — {n.article_count} articles, {n.wow_growth_pct}% WoW
-              </li>
-            ))}
-          </ul>
-        </>
+      {report && view === 'overview' && (
+        <Overview
+          rows={rows}
+          sort={overviewSort}
+          onSort={setOverviewSort}
+          onOpenTheme={(theme) => go('detail', theme)}
+        />
       )}
-    </main>
+
+      {report && (view === 'detail' || view === 'company') && (
+        <div className={styles.status}>
+          {activeTheme}: this screen is coming next.
+        </div>
+      )}
+    </>
   )
 }
-
-export default App

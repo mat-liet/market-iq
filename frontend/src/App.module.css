@@ -1,0 +1,13 @@
+.status {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 60px 30px;
+  font: 400 14px/1.6 var(--sans);
+  color: var(--text-muted);
+}
+
+.status code {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-bright);
+}
