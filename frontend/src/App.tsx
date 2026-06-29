@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react'
-import { api, toNarrativeRows, type DailyReport, type NarrativeRow } from './api'
+import {
+  api,
+  toNarrativeRows,
+  type Company,
+  type DailyReport,
+  type NarrativeRow,
+  type ThemeReport,
+} from './api'
 import { Header } from './components/Header'
 import { Overview, type OverviewSort } from './components/Overview'
+import { NarrativeDetail } from './components/NarrativeDetail'
+import { CompanyView } from './components/CompanyView'
+import type { CompanySort } from './lib/encoding'
 import styles from './App.module.css'
 
 export type View = 'overview' | 'detail' | 'company'
@@ -12,13 +22,27 @@ export default function App() {
   const [view, setView] = useState<View>('overview')
   const [activeTheme, setActiveTheme] = useState<string | null>(null)
   const [overviewSort, setOverviewSort] = useState<OverviewSort>('accel')
+  const [companySort, setCompanySort] = useState<CompanySort>('importance')
+  const [themeReport, setThemeReport] = useState<ThemeReport | null>(null)
+  const [themeCompanies, setThemeCompanies] = useState<Company[] | null>(null)
+
+  const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e))
 
   useEffect(() => {
-    api
-      .dailyReport()
-      .then(setReport)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+    api.dailyReport().then(setReport).catch(fail)
   }, [])
+
+  // Fetch per-theme data on drill-in (the daily report is cached above).
+  useEffect(() => {
+    if (!activeTheme) return
+    if (view === 'detail') {
+      setThemeReport(null)
+      api.themeReport(activeTheme).then(setThemeReport).catch(fail)
+    } else if (view === 'company') {
+      setThemeCompanies(null)
+      api.themeCompanies(activeTheme).then((r) => setThemeCompanies(r.companies)).catch(fail)
+    }
+  }, [view, activeTheme])
 
   function go(next: View, theme: string | null = activeTheme) {
     setView(next)
@@ -56,11 +80,31 @@ export default function App() {
         />
       )}
 
-      {report && (view === 'detail' || view === 'company') && (
-        <div className={styles.status}>
-          {activeTheme}: this screen is coming next.
-        </div>
-      )}
+      {report && view === 'detail' &&
+        (themeReport ? (
+          <NarrativeDetail
+            report={themeReport}
+            generatedAt={report.generated_at}
+            onBack={() => go('overview', null)}
+            onCompanies={() => go('company')}
+          />
+        ) : (
+          !error && <div className={styles.status}>Loading {activeTheme}…</div>
+        ))}
+
+      {report && view === 'company' &&
+        activeTheme &&
+        (themeCompanies ? (
+          <CompanyView
+            theme={activeTheme}
+            companies={themeCompanies}
+            sort={companySort}
+            onSort={setCompanySort}
+            onBack={() => go('detail')}
+          />
+        ) : (
+          !error && <div className={styles.status}>Loading companies…</div>
+        ))}
     </>
   )
 }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import type { Company } from '../api'
 import {
   fmtWow,
   caretFor,
@@ -7,6 +8,7 @@ import {
   timeLabel,
   fmtDate,
   fmtHeaderDateTime,
+  sortCompanies,
   sparkline,
   ACCENT_ACCEL,
   ACCENT_COOL,
@@ -73,6 +75,55 @@ describe('fmtHeaderDateTime', () => {
   })
   test('zero-pads day and time', () => {
     expect(fmtHeaderDateTime('2026-01-05T09:07:00+00:00')).toBe('05 JAN 2026 · 09:07 UTC')
+  })
+})
+
+describe('sortCompanies', () => {
+  const co = (
+    name: string,
+    mentions: number,
+    avg_importance: number | null,
+    avg_sentiment: Company['avg_sentiment'],
+  ): Company => ({ name, ticker: name, mentions, avg_importance, avg_sentiment })
+
+  const companies = [
+    co('A', 3, 6, 'negative'),
+    co('B', 9, 8, 'neutral'),
+    co('C', 5, 7, 'positive'),
+    co('D', 5, 9, 'positive'),
+  ]
+
+  test('by importance, descending', () => {
+    expect(sortCompanies(companies, 'importance').map((c) => c.name)).toEqual([
+      'D',
+      'B',
+      'C',
+      'A',
+    ])
+  })
+
+  test('by mentions, descending', () => {
+    expect(sortCompanies(companies, 'mentions').map((c) => c.name)).toEqual([
+      'B',
+      'C',
+      'D',
+      'A',
+    ])
+  })
+
+  test('by sentiment: positive → neutral → negative, importance breaks ties', () => {
+    expect(sortCompanies(companies, 'sentiment').map((c) => c.name)).toEqual([
+      'D',
+      'C',
+      'B',
+      'A',
+    ])
+  })
+
+  test('does not mutate the input', () => {
+    const input = [...companies]
+    sortCompanies(input, 'mentions')
+    expect(input.map((c) => c.name)).toEqual(['A', 'B', 'C', 'D'])
   })
 })
 

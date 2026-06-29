@@ -2,7 +2,7 @@
 // design's visual logic (acceleration, sentiment, importance, time) and are unit
 // tested in encoding.test.ts.
 
-import type { Sentiment } from '../api'
+import type { Company, Sentiment } from '../api'
 
 // --- Acceleration ---------------------------------------------------------
 
@@ -53,6 +53,29 @@ export function sentimentMark(s: Sentiment | null): SentimentMark | null {
 export function importanceWidth(importance: number | null): string {
   if (importance == null) return '0%'
   return Math.round((importance / 10) * 100) + '%'
+}
+
+// --- Company sorting ------------------------------------------------------
+
+export type CompanySort = 'importance' | 'mentions' | 'sentiment'
+
+const SENTIMENT_RANK: Record<Sentiment, number> = { positive: 0, neutral: 1, negative: 2 }
+
+function sentimentRank(s: Sentiment | null): number {
+  return s ? SENTIMENT_RANK[s] : 3 // unknown sentiment sorts last
+}
+
+/** Sort companies for the Company view. Returns a new array. */
+export function sortCompanies(companies: Company[], sort: CompanySort): Company[] {
+  const byImportance = (a: Company, b: Company) =>
+    (b.avg_importance ?? -1) - (a.avg_importance ?? -1)
+  return [...companies].sort((a, b) => {
+    if (sort === 'mentions') return b.mentions - a.mentions
+    if (sort === 'sentiment') {
+      return sentimentRank(a.avg_sentiment) - sentimentRank(b.avg_sentiment) || byImportance(a, b)
+    }
+    return byImportance(a, b)
+  })
 }
 
 // --- Time -----------------------------------------------------------------
