@@ -6,6 +6,7 @@ from app.db.models import Theme
 from app.db.session import SessionLocal
 from app.services.report import (
     count_articles,
+    count_companies,
     emerging_associations,
     generate_report,
     top_articles,
@@ -39,6 +40,7 @@ def report_theme(theme: str, session=Depends(get_session)):
     return {
         "theme": theme,
         "article_count": count_articles(session, theme, start, now),
+        "company_count": count_companies(session, theme, start, now),
         "top_companies": top_companies(session, theme, start, now),
         "emerging_associations": emerging_associations(session, theme, now=now),
         "important_articles": top_articles(session, theme, start, now),

@@ -49,6 +49,27 @@ def test_single_theme_report(client, session):
     assert resp.json()["theme"] == "AI Infrastructure"
 
 
+def test_single_theme_report_includes_company_count_and_company_fields(client, session):
+    seed_taxonomy(session)
+    art = Article(url="u9", title="AI", body="b", source="cnbc",
+                  published_at=datetime.now(timezone.utc))
+    session.add(art)
+    session.flush()
+    store_classification(session, art, {
+        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
+        "sentiment": "positive", "importance": 8,
+    })
+    session.flush()
+
+    body = client.get("/report/AI Infrastructure").json()
+    assert body["company_count"] == 1
+    company = body["top_companies"][0]
+    assert company["mentions"] == 1
+    assert company["avg_sentiment"] == "positive"
+    assert company["avg_importance"] == 8.0
+
+
 def test_unknown_theme_returns_404(client, session):
     seed_taxonomy(session)
     resp = client.get("/report/Nonexistent Theme")
