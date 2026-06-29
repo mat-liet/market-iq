@@ -9,27 +9,39 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 export type Sentiment = 'positive' | 'negative' | 'neutral'
 
-/** A company aggregate as returned by top_companies / emerging_associations. */
-export interface CompanyMention {
+/** A company aggregate (top_companies / GET /companies). */
+export interface Company {
   name: string
   ticker: string | null
-  mention_count: number
+  mentions: number
+  avg_importance: number | null
+  avg_sentiment: Sentiment | null
 }
 
-/** An article as returned by top_articles. */
-export interface ArticleSummary {
+/** A newly-emerging company association (emerging_associations). */
+export interface EmergingAssociation {
+  company: string
+  ticker: string | null
+  first_seen: string | null // ISO timestamp
+}
+
+/** An important article (top_articles / GET /articles). */
+export interface Article {
   title: string
   url: string
+  source: string | null
+  published_at: string | null // ISO timestamp
   importance: number | null
+  sentiment: Sentiment | null
 }
 
-/** Per-theme block inside the daily report and the single-theme report. */
+/** Per-theme block inside the daily report. */
 export interface NarrativeReport {
   article_count: number
   wow_growth_pct: number
-  top_companies: CompanyMention[]
-  emerging_associations: CompanyMention[]
-  important_articles: ArticleSummary[]
+  top_companies: Company[]
+  emerging_associations: EmergingAssociation[]
+  important_articles: Article[]
 }
 
 /** GET /report/daily */
@@ -38,25 +50,36 @@ export interface DailyReport {
   narratives: Record<string, NarrativeReport>
 }
 
+/** A daily-report theme flattened with its name, for ranking/rendering. */
+export interface NarrativeRow extends NarrativeReport {
+  theme: string
+}
+
 /** GET /report/{theme} */
 export interface ThemeReport {
   theme: string
   article_count: number
-  top_companies: CompanyMention[]
-  emerging_associations: CompanyMention[]
-  important_articles: ArticleSummary[]
+  company_count: number
+  top_companies: Company[]
+  emerging_associations: EmergingAssociation[]
+  important_articles: Article[]
 }
 
 /** GET /articles/{theme} */
 export interface ThemeArticles {
   theme: string
-  articles: ArticleSummary[]
+  articles: Article[]
 }
 
 /** GET /companies/{theme} */
 export interface ThemeCompanies {
   theme: string
-  companies: CompanyMention[]
+  companies: Company[]
+}
+
+/** Flatten the daily report's narratives map into a list carrying the name. */
+export function toNarrativeRows(report: DailyReport): NarrativeRow[] {
+  return Object.entries(report.narratives).map(([theme, n]) => ({ theme, ...n }))
 }
 
 async function getJson<T>(path: string): Promise<T> {
