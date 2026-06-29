@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -68,6 +68,26 @@ def test_single_theme_report_includes_company_count_and_company_fields(client, s
     assert company["mentions"] == 1
     assert company["avg_sentiment"] == "positive"
     assert company["avg_importance"] == 8.0
+
+
+def test_single_theme_report_includes_wow_growth(client, session):
+    seed_taxonomy(session)
+    now = datetime.now(timezone.utc)
+    # 2 articles this week, 1 last week -> (2 - 1) / 1 * 100 = 100.0
+    for url, days_ago in [("w1", 1), ("w2", 2), ("w3", 9)]:
+        art = Article(url=url, title="AI", body="b", source="cnbc",
+                      published_at=now - timedelta(days=days_ago))
+        session.add(art)
+        session.flush()
+        store_classification(session, art, {
+            "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
+            "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
+            "sentiment": "positive", "importance": 7,
+        })
+    session.flush()
+
+    body = client.get("/report/AI Infrastructure").json()
+    assert body["wow_growth_pct"] == 100.0
 
 
 def test_unknown_theme_returns_404(client, session):
