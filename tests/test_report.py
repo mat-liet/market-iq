@@ -2,10 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 from app.services.taxonomy import seed_taxonomy
 from app.services.report import (
-    wow_growth_pct, count_articles, emerging_associations, top_articles, generate_report,
+    wow_growth_pct, count_articles, count_companies, top_companies,
+    emerging_associations, top_articles, generate_report,
 )
+from app.services.companies import upsert_company
 from app.workers.classification import store_classification
-from app.db.models import Article
+from app.db.models import Article, Theme, ArticleTheme, ArticleCompany
 
 NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
 
@@ -36,6 +38,24 @@ def _article(session, url, days_ago, theme="AI Infrastructure",
     return art
 
 
+def _tag(session, url, days_ago, theme_name, companies, source="cnbc"):
+    """Create an article tagged to a theme with explicit per-company
+    sentiment/importance (store_classification only allows one sentiment for the
+    whole article, which these aggregate tests need to vary)."""
+    art = Article(url=url, title=f"title {url}", body="b", source=source,
+                  published_at=NOW - timedelta(days=days_ago))
+    session.add(art)
+    session.flush()
+    theme = session.query(Theme).filter_by(name=theme_name).one()
+    session.add(ArticleTheme(article_id=art.id, theme_id=theme.id, confidence=0.9))
+    for name, ticker, sentiment, importance in companies:
+        company = upsert_company(session, name, ticker)
+        session.add(ArticleCompany(article_id=art.id, company_id=company.id,
+                                   sentiment=sentiment, importance=importance))
+    session.flush()
+    return art
+
+
 def test_count_articles_in_window(session):
     seed_taxonomy(session)
     _article(session, "u1", days_ago=1)
@@ -54,9 +74,73 @@ def test_emerging_association_excludes_prior_companies(session):
     _article(session, "new", days_ago=1, company=("Eaton", "ETN"))
 
     emerging = emerging_associations(session, "AI Infrastructure", now=NOW)
-    names = {row["name"] for row in emerging}
+    names = {row["company"] for row in emerging}
     assert "Eaton" in names
     assert "NVIDIA" not in names
+
+
+def test_top_companies_includes_avg_sentiment_and_importance(session):
+    seed_taxonomy(session)
+    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
+    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 6)])
+
+    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    nvda = next(r for r in rows if r["ticker"] == "NVDA")
+    assert nvda["mentions"] == 2
+    assert nvda["avg_importance"] == 7.0  # (8 + 6) / 2
+    assert nvda["avg_sentiment"] == "positive"
+
+
+def test_top_companies_avg_sentiment_tie_is_neutral(session):
+    seed_taxonomy(session)
+    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
+    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "negative", 8)])
+
+    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    nvda = next(r for r in rows if r["ticker"] == "NVDA")
+    assert nvda["avg_sentiment"] == "neutral"  # 1 positive + 1 negative -> tie
+
+
+def test_emerging_includes_first_seen_and_company(session):
+    seed_taxonomy(session)
+    _tag(session, "e1", 3, "AI Infrastructure", [("Eaton", "ETN", "positive", 6)])
+
+    emerging = emerging_associations(session, "AI Infrastructure", now=NOW)
+    eaton = next(r for r in emerging if r["ticker"] == "ETN")
+    assert eaton["company"] == "Eaton"
+    assert eaton["first_seen"].startswith("2026-06-18")  # NOW - 3 days
+
+
+def test_count_companies_distinct_in_window(session):
+    seed_taxonomy(session)
+    _tag(session, "c1", 1, "AI Infrastructure",
+         [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "neutral", 5)])
+    _tag(session, "c2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 7)])
+
+    n = count_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    assert n == 2  # NVIDIA + Eaton, counted once each
+
+
+def test_top_articles_includes_source_published_and_sentiment(session):
+    seed_taxonomy(session)
+    _tag(session, "art1", 1, "AI Infrastructure",
+         [("NVIDIA", "NVDA", "positive", 8)], source="cnbc")
+
+    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    r = rows[0]
+    assert r["source"] == "cnbc"
+    assert r["published_at"].startswith("2026-06-20")  # NOW - 1 day
+    assert r["sentiment"] == "positive"
+    assert r["importance"] == 8
+
+
+def test_top_articles_sentiment_tie_is_neutral(session):
+    seed_taxonomy(session)
+    _tag(session, "art1", 1, "AI Infrastructure",
+         [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "negative", 8)])
+
+    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    assert rows[0]["sentiment"] == "neutral"  # 1 positive + 1 negative -> tie
 
 
 def test_top_articles_dedups_multi_company_article(session):
