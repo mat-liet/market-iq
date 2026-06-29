@@ -11,6 +11,7 @@ from app.services.report import (
     generate_report,
     top_articles,
     top_companies,
+    wow_growth_pct,
 )
 
 router = APIRouter()
@@ -37,9 +38,13 @@ def report_theme(theme: str, session=Depends(get_session)):
         raise HTTPException(status_code=404, detail=f"Unknown theme: {theme}")
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=7)
+    last_start = now - timedelta(days=14)
+    this_week = count_articles(session, theme, start, now)
+    last_week = count_articles(session, theme, last_start, start)
     return {
         "theme": theme,
-        "article_count": count_articles(session, theme, start, now),
+        "article_count": this_week,
+        "wow_growth_pct": wow_growth_pct(this_week, last_week),
         "company_count": count_companies(session, theme, start, now),
         "top_companies": top_companies(session, theme, start, now),
         "emerging_associations": emerging_associations(session, theme, now=now),
