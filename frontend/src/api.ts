@@ -59,6 +59,7 @@ export interface NarrativeRow extends NarrativeReport {
 export interface ThemeReport {
   theme: string
   article_count: number
+  wow_growth_pct: number
   company_count: number
   top_companies: Company[]
   emerging_associations: EmergingAssociation[]
