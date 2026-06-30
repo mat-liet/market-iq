@@ -1,9 +1,10 @@
 # Market Narrative Intelligence
 
-A backend that ingests financial news, uses an LLM to classify each article into a
-fixed taxonomy of **market narratives**, maps those narratives to **companies** with
-sentiment and importance, and exposes the result as **narrative reports** over a REST
-API.
+Ingests financial news, uses an LLM to classify each article into a fixed taxonomy of
+**market narratives**, maps those narratives to **companies** with sentiment and
+importance, and serves the result as **narrative reports** — over a REST API and a
+React dashboard that visualises which narratives are accelerating and the companies
+riding them.
 
 The working hypothesis: *accelerating narratives are an investment-research signal
 before they are fully priced in*. The system builds a structured data foundation —
@@ -29,7 +30,7 @@ RSS feeds (CNBC, Yahoo Finance, MarketWatch)
  Structured signals (PostgreSQL)
         │
         ▼
- Report generator  ──►  FastAPI read API
+ Report generator  ──►  FastAPI read API  ──►  React dashboard (nginx)
 ```
 
 The two workers are **decoupled through the database**: ingestion only writes raw
@@ -47,16 +48,21 @@ For deeper detail see:
 
 ## Quick start (Docker)
 
-The fastest path — Postgres and the app come up together, migrations and taxonomy
-seeding run automatically on startup.
+The fastest path — Postgres, the API, and the dashboard come up together; migrations
+and taxonomy seeding run automatically on startup.
 
 ```bash
 cp .env.example .env          # then edit GEMINI_API_KEY
 docker compose up --build
 ```
 
-The API is then available at <http://localhost:8000>. Interactive docs at
-<http://localhost:8000/docs>.
+Once up:
+
+- **Dashboard** — <http://localhost:3000>
+- **API** — <http://localhost:8000> (interactive docs at <http://localhost:8000/docs>)
+
+The dashboard container serves the built SPA via nginx and reverse-proxies the API on
+the same origin, so the browser talks only to port 3000.
 
 On startup the container entrypoint (`docker-entrypoint.sh`) runs
 `alembic upgrade head` and seeds the taxonomy (idempotent) **before** serving, so a
@@ -101,6 +107,20 @@ their stored themes/companies/sentiment for manual spot-checking:
 ```bash
 python -m scripts.review_classifications
 ```
+
+### Dashboard (frontend)
+
+The dashboard is a React + TypeScript (Vite) SPA in [`frontend/`](frontend/). With the
+API running, start the dev server with hot reload:
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173
+```
+
+In dev, API paths are proxied to the backend at `http://localhost:8000`. See
+[`frontend/README.md`](frontend/README.md) for the screens, scripts, and API client.
 
 ---
 
@@ -187,4 +207,8 @@ alembic/               migrations (0001 = head)
 scripts/               seed_taxonomy, review_classifications
 tests/                 pytest suite (Postgres-backed)
 docs/                  design, architecture, CI/CD docs
+frontend/              React + TypeScript dashboard (Vite, served by nginx in Docker)
+  src/components/       Overview, NarrativeDetail, CompanyView, Header screens
+  src/lib/              encoding helpers (acceleration, sentiment, sparkline)
+  src/api.ts            typed read-API client
 ```
