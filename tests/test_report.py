@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from app.services.taxonomy import seed_taxonomy
 from app.services.report import (
     wow_growth_pct, count_articles, count_companies, top_companies,
-    emerging_associations, top_articles, generate_report,
+    emerging_associations, top_articles, generate_report, weighted_sentiment,
 )
 from app.services.companies import upsert_company
 from app.workers.classification import store_classification
@@ -18,6 +18,30 @@ def test_wow_growth_basic():
 
 def test_wow_growth_handles_zero_last_week():
     assert wow_growth_pct(this_week=5, last_week=0) == 500.0  # divides by max(0,1)
+
+
+def test_weighted_sentiment_importance_dominates():
+    # one high-importance negative outweighs several low-importance positives
+    score, label = weighted_sentiment([("positive", 2), ("positive", 2), ("negative", 9)])
+    assert score == -0.385          # (2 + 2 - 9) / 13
+    assert label == "negative"
+
+
+def test_weighted_sentiment_deadband_is_neutral():
+    score, label = weighted_sentiment([("positive", 8), ("negative", 8)])  # net 0
+    assert score == 0.0
+    assert label == "neutral"
+
+
+def test_weighted_sentiment_all_positive():
+    score, label = weighted_sentiment([("positive", 5), ("positive", 7)])
+    assert score == 1.0
+    assert label == "positive"
+
+
+def test_weighted_sentiment_skips_nulls_and_empty():
+    assert weighted_sentiment([]) == (None, None)
+    assert weighted_sentiment([(None, 5), ("positive", None)]) == (None, None)
 
 
 def _article(session, url, days_ago, theme="AI Infrastructure",
@@ -87,18 +111,21 @@ def test_top_companies_includes_avg_sentiment_and_importance(session):
     rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
     assert nvda["mentions"] == 2
-    assert nvda["avg_importance"] == 7.0  # (8 + 6) / 2
+    assert nvda["avg_importance"] == 7.0       # (8 + 6) / 2
     assert nvda["avg_sentiment"] == "positive"
+    assert nvda["sentiment_score"] == 1.0      # all positive -> +1
 
 
-def test_top_companies_avg_sentiment_tie_is_neutral(session):
+def test_top_companies_sentiment_is_importance_weighted(session):
     seed_taxonomy(session)
+    # equal-but-opposite importance nets to zero -> neutral (within deadband)
     _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
     _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "negative", 8)])
 
     rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
-    assert nvda["avg_sentiment"] == "neutral"  # 1 positive + 1 negative -> tie
+    assert nvda["sentiment_score"] == 0.0
+    assert nvda["avg_sentiment"] == "neutral"
 
 
 def test_emerging_includes_first_seen_and_company(session):

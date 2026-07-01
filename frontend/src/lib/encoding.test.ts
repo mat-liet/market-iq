@@ -84,7 +84,14 @@ describe('sortCompanies', () => {
     mentions: number,
     avg_importance: number | null,
     avg_sentiment: Company['avg_sentiment'],
-  ): Company => ({ name, ticker: name, mentions, avg_importance, avg_sentiment })
+  ): Company => ({
+    name,
+    ticker: name,
+    mentions,
+    avg_importance,
+    avg_sentiment,
+    sentiment_score: null,
+  })
 
   const companies = [
     co('A', 3, 6, 'negative'),
