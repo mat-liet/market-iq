@@ -1,3 +1,5 @@
+from sqlalchemy.dialects.postgresql import insert
+
 from app.db.models import Theme
 
 
@@ -12,3 +14,12 @@ class ThemeRepository:
 
     def list_all(self) -> list[Theme]:
         return self.session.query(Theme).all()
+
+    def upsert_ignore(self, name: str, keywords) -> None:
+        """Insert a theme, doing nothing if the name already exists."""
+        stmt = (
+            insert(Theme)
+            .values(name=name, keywords=keywords)
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+        self.session.execute(stmt)

@@ -2,14 +2,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.services.taxonomy import seed_taxonomy
 from app.services.report import wow_growth_pct, weighted_sentiment, ReportService
 from app.services.errors import UnknownThemeError
 from app.repositories.report import ReportRepository
 from app.repositories.theme import ThemeRepository
-from app.services.companies import upsert_company
 from app.workers.classification import store_classification
 from app.db.models import Article, Theme, ArticleTheme, ArticleCompany
+from tests.fixtures import seed_taxonomy, upsert_company
 
 NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
 
