@@ -20,22 +20,23 @@ def normalize_company_name(name: str) -> str:
     return " ".join(tokens).strip()
 
 
-def upsert_company(session, name: str, ticker: str | None) -> Company:
-    """Find or create a company. Match on ticker first (when present),
-    then on normalized name. Prevents fragmentation of mention counts."""
-    normalized = normalize_company_name(name)
+class CompanyService:
+    """Business rules for resolving companies (find-or-create with dedup)."""
 
-    company = None
-    if ticker:
-        company = session.query(Company).filter(Company.ticker == ticker).one_or_none()
-    if company is None:
-        company = (
-            session.query(Company)
-            .filter(Company.normalized_name == normalized)
-            .one_or_none()
-        )
-    if company is None:
-        company = Company(name=name, ticker=ticker, normalized_name=normalized)
-        session.add(company)
-        session.flush()
-    return company
+    def __init__(self, company_repo):
+        self.company_repo = company_repo
+
+    def upsert_company(self, name: str, ticker: str | None) -> Company:
+        """Find or create a company. Match on ticker first (when present),
+        then on normalized name. Prevents fragmentation of mention counts."""
+        normalized = normalize_company_name(name)
+
+        company = None
+        if ticker:
+            company = self.company_repo.find_by_ticker(ticker)
+        if company is None:
+            company = self.company_repo.find_by_normalized_name(normalized)
+        if company is None:
+            company = Company(name=name, ticker=ticker, normalized_name=normalized)
+            self.company_repo.add(company)
+        return company

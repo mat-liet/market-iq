@@ -1,7 +1,3 @@
-from sqlalchemy.dialects.postgresql import insert
-
-from app.db.models import Theme
-
 TAXONOMY = {
     "AI Infrastructure": [
         "artificial intelligence", "LLM", "large language model",
@@ -21,13 +17,15 @@ TAXONOMY = {
 }
 
 
-def seed_taxonomy(session) -> None:
-    """Insert taxonomy themes. Idempotent — does nothing for names already present."""
-    for name, keywords in TAXONOMY.items():
-        stmt = (
-            insert(Theme)
-            .values(name=name, keywords=keywords)
-            .on_conflict_do_nothing(index_elements=["name"])
-        )
-        session.execute(stmt)
-    session.commit()
+class TaxonomyService:
+    """Seeds the fixed narrative taxonomy (idempotent)."""
+
+    def __init__(self, theme_repo, session):
+        self.theme_repo = theme_repo
+        self.session = session  # held only as the transaction boundary
+
+    def seed_taxonomy(self) -> None:
+        """Insert taxonomy themes. Idempotent — does nothing for names already present."""
+        for name, keywords in TAXONOMY.items():
+            self.theme_repo.upsert_ignore(name, keywords)
+        self.session.commit()

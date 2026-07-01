@@ -5,11 +5,10 @@ from sqlalchemy import text
 
 import app.workers.classification as classification
 from app.workers.classification import classify_batch, store_classification
-from app.services.taxonomy import seed_taxonomy
 from app.db.models import (
     Article, Company, ArticleTheme, ArticleCompany, ClassificationLog,
 )
-from tests.fixtures import FakeGeminiClient
+from tests.fixtures import FakeGeminiClient, seed_taxonomy
 
 
 def _add_article(session, url="https://a.com/1"):

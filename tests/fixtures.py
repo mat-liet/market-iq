@@ -1,5 +1,20 @@
 from datetime import datetime, timezone
 
+from app.repositories.company import CompanyRepository
+from app.repositories.theme import ThemeRepository
+from app.services.companies import CompanyService
+from app.services.taxonomy import TaxonomyService
+
+
+def seed_taxonomy(session):
+    """Seed the taxonomy for a test, via the real TaxonomyService."""
+    TaxonomyService(ThemeRepository(session), session).seed_taxonomy()
+
+
+def upsert_company(session, name, ticker):
+    """Find-or-create a company for test setup, via the real CompanyService."""
+    return CompanyService(CompanyRepository(session)).upsert_company(name, ticker)
+
 
 class FakeExtractor:
     """Returns canned bodies keyed by URL; None means extraction failed."""

@@ -1,7 +1,8 @@
 import time
 
 from app.db.models import Article, Theme, ArticleTheme, ArticleCompany, ClassificationLog
-from app.services.companies import upsert_company
+from app.repositories.company import CompanyRepository
+from app.services.companies import CompanyService
 from app.services.llm import build_prompt, parse_response, call_gemini, call_with_retry
 
 
@@ -50,12 +51,13 @@ def store_classification(session, article: Article, result: dict) -> None:
 
     sentiment = _clean_sentiment(result.get("sentiment"))
     importance = _clean_importance(result.get("importance"))
+    company_service = CompanyService(CompanyRepository(session))
     seen_companies: set = set()
     for company_entry in result.get("companies") or []:
         name = company_entry.get("name")
         if not name:
             continue
-        company = upsert_company(session, name, company_entry.get("ticker"))
+        company = company_service.upsert_company(name, company_entry.get("ticker"))
         if company.id in seen_companies:
             continue  # two names resolved to the same company — store once
         seen_companies.add(company.id)
