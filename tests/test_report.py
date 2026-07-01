@@ -161,13 +161,26 @@ def test_top_articles_includes_source_published_and_sentiment(session):
     assert r["importance"] == 8
 
 
-def test_top_articles_sentiment_tie_is_neutral(session):
+def test_top_articles_sentiment_from_driving_mention(session):
     seed_taxonomy(session)
+    # NVIDIA is the highest-importance mention -> it drives BOTH importance and sentiment
+    _tag(session, "art1", 1, "AI Infrastructure",
+         [("NVIDIA", "NVDA", "positive", 9), ("Eaton", "ETN", "negative", 3)])
+
+    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    assert rows[0]["importance"] == 9
+    assert rows[0]["sentiment"] == "positive"   # from NVIDIA, not a majority vote
+
+
+def test_top_articles_importance_tie_broken_by_company_name(session):
+    seed_taxonomy(session)
+    # equal importance -> deterministic tiebreak by company name ASC (Eaton < NVIDIA)
     _tag(session, "art1", 1, "AI Infrastructure",
          [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "negative", 8)])
 
     rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
-    assert rows[0]["sentiment"] == "neutral"  # 1 positive + 1 negative -> tie
+    assert rows[0]["importance"] == 8
+    assert rows[0]["sentiment"] == "negative"   # Eaton wins the tie
 
 
 def test_top_articles_dedups_multi_company_article(session):
