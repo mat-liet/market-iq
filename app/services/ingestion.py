@@ -1,9 +1,7 @@
 from datetime import datetime, timezone
 
 import feedparser
-from sqlalchemy.dialects.postgresql import insert
 
-from app.db.models import Article
 from app.services.body_extractor import BodyExtractor
 
 # Config-driven feeds. NOTE: these URLs are NOT guaranteed live — feed paths
@@ -38,29 +36,30 @@ def verify_feed(feed_url: str) -> bool:
     return len(fetch_feed(feed_url)) > 0
 
 
-def ingest_entries(session, entries, source, extractor: BodyExtractor, now=None) -> int:
-    """Insert new articles, dedup by URL. Returns count of rows actually inserted."""
-    now = now or datetime.now(timezone.utc)
-    inserted = 0
-    for entry in entries:
-        url = entry["link"]
-        if not url:
-            continue
-        body = extractor.extract(url) or entry.get("summary") or None
-        published_at = entry.get("published_at") or now
-        stmt = (
-            insert(Article)
-            .values(
-                url=url,
-                title=entry["title"],
-                body=body,
-                source=source,
-                published_at=published_at,
-                processed=False,
-            )
-            .on_conflict_do_nothing(index_elements=["url"])
-        )
-        result = session.execute(stmt)
-        inserted += result.rowcount
-    session.commit()
-    return inserted
+class IngestionService:
+    """Ingests feed entries into articles, deduplicating by URL."""
+
+    def __init__(self, article_repo, session):
+        self.article_repo = article_repo
+        self.session = session  # held only as the transaction boundary
+
+    def ingest_entries(self, entries, source, extractor: BodyExtractor, now=None) -> int:
+        """Insert new articles, dedup by URL. Returns count of rows actually inserted."""
+        now = now or datetime.now(timezone.utc)
+        inserted = 0
+        for entry in entries:
+            url = entry["link"]
+            if not url:
+                continue
+            body = extractor.extract(url) or entry.get("summary") or None
+            published_at = entry.get("published_at") or now
+            inserted += self.article_repo.insert_ignore({
+                "url": url,
+                "title": entry["title"],
+                "body": body,
+                "source": source,
+                "published_at": published_at,
+                "processed": False,
+            })
+        self.session.commit()
+        return inserted

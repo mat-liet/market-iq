@@ -7,8 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.db.session import SessionLocal
 from app.api.routes import get_session
-from app.workers.classification import store_classification
-from tests.fixtures import seed_taxonomy
+from tests.fixtures import seed_taxonomy, store_classification
 from app.db.models import Article
 
 

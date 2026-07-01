@@ -6,9 +6,13 @@ from google import genai
 
 from app.config import Settings
 from app.db.session import SessionLocal
-from app.workers.ingestion import RSS_SOURCES, fetch_feed, ingest_entries
-from app.workers.classification import classify_batch
+from app.repositories.article import ArticleRepository
+from app.repositories.company import CompanyRepository
+from app.repositories.theme import ThemeRepository
 from app.services.body_extractor import TrafilaturaExtractor
+from app.services.classification import ClassificationService
+from app.services.companies import CompanyService
+from app.services.ingestion import RSS_SOURCES, IngestionService, fetch_feed
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +31,11 @@ def _get_gemini_client(settings: Settings):
 def run_ingestion() -> None:
     extractor = TrafilaturaExtractor()
     with SessionLocal() as session:
+        service = IngestionService(ArticleRepository(session), session)
         for source, url in RSS_SOURCES.items():
             try:
                 entries = fetch_feed(url)
-                ingest_entries(session, entries, source, extractor)
+                service.ingest_entries(entries, source, extractor)
             except Exception as exc:
                 logger.warning("ingestion failed for source %s: %s", source, exc)
 
@@ -39,7 +44,13 @@ def run_classification() -> None:
     settings = Settings.from_env()
     client = _get_gemini_client(settings)
     with SessionLocal() as session:
-        classify_batch(session, client, settings.gemini_model)
+        service = ClassificationService(
+            ArticleRepository(session),
+            ThemeRepository(session),
+            CompanyService(CompanyRepository(session)),
+            session,
+        )
+        service.classify_batch(client, settings.gemini_model)
 
 
 def build_scheduler() -> BackgroundScheduler:

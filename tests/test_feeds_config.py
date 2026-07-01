@@ -1,4 +1,4 @@
-from app.workers.ingestion import RSS_SOURCES, fetch_feed
+from app.services.ingestion import RSS_SOURCES, fetch_feed
 
 
 def test_three_sources_configured():
@@ -16,7 +16,7 @@ def test_parses_a_static_feed(monkeypatch):
     fake = type("P", (), {"entries": [
         _Entry(link="https://x.com/1", title="T", summary="S", published_parsed=None)
     ]})()
-    monkeypatch.setattr("app.workers.ingestion.feedparser.parse", lambda url: fake)
+    monkeypatch.setattr("app.services.ingestion.feedparser.parse", lambda url: fake)
 
     entries = fetch_feed("https://whatever")
     assert entries[0]["link"] == "https://x.com/1"

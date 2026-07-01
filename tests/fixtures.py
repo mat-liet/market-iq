@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 
+from app.repositories.article import ArticleRepository
 from app.repositories.company import CompanyRepository
 from app.repositories.theme import ThemeRepository
+from app.services.classification import ClassificationService
 from app.services.companies import CompanyService
 from app.services.taxonomy import TaxonomyService
 
@@ -14,6 +16,17 @@ def seed_taxonomy(session):
 def upsert_company(session, name, ticker):
     """Find-or-create a company for test setup, via the real CompanyService."""
     return CompanyService(CompanyRepository(session)).upsert_company(name, ticker)
+
+
+def store_classification(session, article, result):
+    """Persist a classification result for test setup, via the real service."""
+    service = ClassificationService(
+        ArticleRepository(session),
+        ThemeRepository(session),
+        CompanyService(CompanyRepository(session)),
+        session,
+    )
+    service.store_classification(article, result)
 
 
 class FakeExtractor:
