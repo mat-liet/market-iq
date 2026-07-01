@@ -24,6 +24,43 @@ def _majority_sentiment(values) -> str | None:
     return ranked[0][0]
 
 
+_SENTIMENT_VALUE = {"positive": 1, "negative": -1, "neutral": 0}
+_NEUTRAL_DEADBAND = 0.15
+
+
+def weighted_sentiment(pairs) -> tuple[float | None, str | None]:
+    """Importance-weighted net sentiment for a set of mentions.
+
+    `pairs` is an iterable of (sentiment, importance). Each sentiment maps to
+    +1/0/-1 (positive/neutral/negative) and is weighted by its importance.
+    Mentions with a null/unknown sentiment or null importance are ignored.
+
+    Returns (score, label):
+      score — net value in [-1.0, 1.0] rounded to 3 dp, or None if no usable mentions
+      label — 'positive'/'negative'/'neutral' from the score (deadband), or None
+    """
+    numerator = 0.0
+    weight = 0.0
+    for sentiment, importance in pairs:
+        if importance is None:
+            continue
+        value = _SENTIMENT_VALUE.get(sentiment)
+        if value is None:
+            continue
+        numerator += value * importance
+        weight += importance
+    if weight == 0:
+        return None, None
+    score = round(numerator / weight, 3)
+    if score > _NEUTRAL_DEADBAND:
+        label = "positive"
+    elif score < -_NEUTRAL_DEADBAND:
+        label = "negative"
+    else:
+        label = "neutral"
+    return score, label
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -58,7 +95,8 @@ def top_companies(session, theme_name: str, start: datetime, end: datetime, limi
         SELECT c.name, c.ticker,
                COUNT(*) AS mentions,
                ROUND(AVG(ac.importance) FILTER (WHERE ac.importance IS NOT NULL), 1) AS avg_importance,
-               array_agg(ac.sentiment) FILTER (WHERE ac.sentiment IS NOT NULL) AS sentiments
+               array_agg(ac.sentiment ORDER BY ac.article_id, ac.company_id) AS sentiments,
+               array_agg(ac.importance ORDER BY ac.article_id, ac.company_id) AS importances
         FROM article_companies ac
         JOIN companies c ON c.id = ac.company_id
         JOIN article_themes at ON at.article_id = ac.article_id
@@ -70,13 +108,18 @@ def top_companies(session, theme_name: str, start: datetime, end: datetime, limi
         ORDER BY mentions DESC
         LIMIT :limit
     """), {"theme": theme_name, "start": start, "end": end, "limit": limit}).mappings()
-    return [{
-        "name": r["name"],
-        "ticker": r["ticker"],
-        "mentions": int(r["mentions"]),
-        "avg_importance": float(r["avg_importance"]) if r["avg_importance"] is not None else None,
-        "avg_sentiment": _majority_sentiment(r["sentiments"] or []),
-    } for r in rows]
+    result = []
+    for r in rows:
+        score, label = weighted_sentiment(zip(r["sentiments"] or [], r["importances"] or []))
+        result.append({
+            "name": r["name"],
+            "ticker": r["ticker"],
+            "mentions": int(r["mentions"]),
+            "avg_importance": float(r["avg_importance"]) if r["avg_importance"] is not None else None,
+            "avg_sentiment": label,
+            "sentiment_score": score,
+        })
+    return result
 
 
 def emerging_associations(session, theme_name: str, now: datetime | None = None):

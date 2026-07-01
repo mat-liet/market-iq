@@ -16,6 +16,7 @@ export interface Company {
   mentions: number
   avg_importance: number | null
   avg_sentiment: Sentiment | null
+  sentiment_score: number | null // importance-weighted net sentiment, -1..1
 }
 
 /** A newly-emerging company association (emerging_associations). */
