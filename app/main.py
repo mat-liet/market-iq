@@ -1,9 +1,11 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api.routes import router
+from app.services.errors import UnknownThemeError
 from app.workers.scheduler import build_scheduler
 
 
@@ -26,6 +28,11 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Market Narrative Intelligence — Phase 1", lifespan=lifespan)
     app.include_router(router)
+
+    @app.exception_handler(UnknownThemeError)
+    async def _unknown_theme(request: Request, exc: UnknownThemeError):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
     return app
 
 
