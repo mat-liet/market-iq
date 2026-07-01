@@ -3,12 +3,24 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
-import app.workers.classification as classification
-from app.workers.classification import classify_batch, store_classification
+from app.services.classification import ClassificationService
+from app.repositories.article import ArticleRepository
+from app.repositories.company import CompanyRepository
+from app.repositories.theme import ThemeRepository
+from app.services.companies import CompanyService
 from app.db.models import (
     Article, Company, ArticleTheme, ArticleCompany, ClassificationLog,
 )
 from tests.fixtures import FakeGeminiClient, seed_taxonomy
+
+
+def _service(session):
+    return ClassificationService(
+        ArticleRepository(session),
+        ThemeRepository(session),
+        CompanyService(CompanyRepository(session)),
+        session,
+    )
 
 
 def _add_article(session, url="https://a.com/1"):
@@ -33,7 +45,7 @@ def test_classifies_and_marks_processed(session):
     article = _add_article(session)
     client = FakeGeminiClient([GOOD])
 
-    n = classify_batch(session, client, "gemini-2.5-flash-lite", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "gemini-2.5-flash-lite", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
@@ -54,7 +66,7 @@ def test_company_dedup_across_articles(session):
     })
     client = FakeGeminiClient([GOOD, variant])
 
-    classify_batch(session, client, "m", sleeper=lambda s: None)
+    _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert session.query(Company).filter_by(ticker="NVDA").count() == 1
 
@@ -68,7 +80,7 @@ def test_unknown_theme_is_skipped(session):
     })
     client = FakeGeminiClient([payload])
 
-    classify_batch(session, client, "m", sleeper=lambda s: None)
+    _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert session.query(ArticleTheme).count() == 0  # unknown theme not stored
 
@@ -78,7 +90,7 @@ def test_malformed_response_logged_but_article_processed(session):
     article = _add_article(session)
     client = FakeGeminiClient(["this is not json"])
 
-    classify_batch(session, client, "m", sleeper=lambda s: None)
+    _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert session.get(Article, article.id).processed is True
     log = session.query(ClassificationLog).one()
@@ -91,7 +103,7 @@ def test_rate_limit_retried_then_succeeds(session):
     _add_article(session)
     client = FakeGeminiClient([GOOD], error={"times": 1, "message": "429 RESOURCE_EXHAUSTED"})
 
-    classify_batch(session, client, "m", base_delay=0.0, sleeper=lambda s: None)
+    _service(session).classify_batch(client, "m", base_delay=0.0, sleeper=lambda s: None)
 
     assert session.query(ArticleTheme).count() == 1
     assert client.models.calls == 2  # one failure + one success
@@ -104,7 +116,7 @@ def test_only_processes_unprocessed(session):
     session.flush()
     client = FakeGeminiClient([])
 
-    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert n == 0
 
@@ -117,7 +129,7 @@ def test_call_failure_isolates_article(session):
     # error for first 4 calls (all retries for article 1 exhausted), then article 2 succeeds
     client = FakeGeminiClient([GOOD], error={"times": 4, "message": "503 UNAVAILABLE"})
 
-    n = classify_batch(session, client, "m", base_delay=0.0, sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", base_delay=0.0, sleeper=lambda s: None)
 
     articles = session.query(Article).order_by(Article.url).all()
     article1 = next(a for a in articles if a.url == "https://a.com/1")
@@ -148,7 +160,7 @@ def test_duplicate_company_in_one_article_stored_once(session):
     })
     client = FakeGeminiClient([payload])
 
-    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
@@ -168,7 +180,7 @@ def test_duplicate_theme_in_one_article_stored_once(session):
     })
     client = FakeGeminiClient([payload])
 
-    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
@@ -185,7 +197,7 @@ def test_out_of_range_importance_is_dropped(session):
     })
     client = FakeGeminiClient([payload])
 
-    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
@@ -203,7 +215,7 @@ def test_invalid_sentiment_is_dropped(session):
     })
     client = FakeGeminiClient([payload])
 
-    n = classify_batch(session, client, "m", sleeper=lambda s: None)
+    n = _service(session).classify_batch(client, "m", sleeper=lambda s: None)
 
     assert n == 1
     assert session.get(Article, article.id).processed is True
@@ -232,18 +244,18 @@ def test_persist_failure_isolates_article(engine, monkeypatch):
         sess.commit()  # durable, like articles committed by the ingestion worker
 
         calls = {"n": 0}
-        real_store = classification.store_classification
+        real_store = ClassificationService.store_classification
 
-        def flaky_store(s, art, result):
+        def flaky_store(self, art, result):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise ValueError("simulated persistence failure")
-            return real_store(s, art, result)
+            return real_store(self, art, result)
 
-        monkeypatch.setattr(classification, "store_classification", flaky_store)
+        monkeypatch.setattr(ClassificationService, "store_classification", flaky_store)
         client = FakeGeminiClient([GOOD, GOOD])
 
-        n = classify_batch(sess, client, "m", sleeper=lambda s: None)
+        n = _service(sess).classify_batch(client, "m", sleeper=lambda s: None)
 
         assert n == 2  # both articles end up processed; batch not aborted
         assert sess.get(Article, bad.id).processed is True

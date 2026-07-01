@@ -6,9 +6,8 @@ from app.services.report import wow_growth_pct, weighted_sentiment, ReportServic
 from app.services.errors import UnknownThemeError
 from app.repositories.report import ReportRepository
 from app.repositories.theme import ThemeRepository
-from app.workers.classification import store_classification
 from app.db.models import Article, Theme, ArticleTheme, ArticleCompany
-from tests.fixtures import seed_taxonomy, upsert_company
+from tests.fixtures import seed_taxonomy, upsert_company, store_classification
 
 NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
 

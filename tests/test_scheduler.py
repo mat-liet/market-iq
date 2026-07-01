@@ -1,6 +1,7 @@
 import logging
 from unittest.mock import MagicMock, patch
 
+from app.services.ingestion import IngestionService
 from app.workers.scheduler import build_scheduler, run_ingestion
 
 
@@ -31,7 +32,7 @@ def test_run_ingestion_isolates_failing_feed(caplog):
 
     ingest_calls = []
 
-    def fake_ingest_entries(session, entries, source, extractor):
+    def fake_ingest_entries(self, entries, source, extractor):
         ingest_calls.append(source)
 
     mock_session = MagicMock()
@@ -39,7 +40,7 @@ def test_run_ingestion_isolates_failing_feed(caplog):
     with (
         patch("app.workers.scheduler.RSS_SOURCES", fake_sources),
         patch("app.workers.scheduler.fetch_feed", side_effect=fake_fetch_feed),
-        patch("app.workers.scheduler.ingest_entries", side_effect=fake_ingest_entries),
+        patch.object(IngestionService, "ingest_entries", fake_ingest_entries),
         patch("app.workers.scheduler.SessionLocal", return_value=mock_session),
         patch("app.workers.scheduler.TrafilaturaExtractor", return_value=MagicMock()),
         caplog.at_level(logging.WARNING, logger="app.workers.scheduler"),
