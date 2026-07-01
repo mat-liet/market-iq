@@ -1,4 +1,3 @@
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
@@ -8,20 +7,6 @@ from app.db.models import Theme
 
 def wow_growth_pct(this_week: int, last_week: int) -> float:
     return round((this_week - last_week) / max(last_week, 1) * 100, 1)
-
-
-def _majority_sentiment(values) -> str | None:
-    """Reduce a list of per-mention sentiments to one label. Returns the single
-    most common; on a tie (or no data) returns 'neutral' / None respectively.
-    Used for article-level sentiment (majority of its companies) and a company's
-    overall sentiment across its mentions."""
-    counts = Counter(v for v in values if v)
-    if not counts:
-        return None
-    ranked = counts.most_common()
-    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
-        return "neutral"
-    return ranked[0][0]
 
 
 _SENTIMENT_VALUE = {"positive": 1, "negative": -1, "neutral": 0}
@@ -162,20 +147,26 @@ def emerging_associations(session, theme_name: str, now: datetime | None = None)
 
 
 def top_articles(session, theme_name: str, start: datetime, end: datetime, limit: int = 3):
-    # Group by article so a multi-company article appears once. Importance is the
-    # max across the article's companies; sentiment is the majority of them.
+    # One row per article: its single highest-importance mention drives both the
+    # importance and the sentiment, so the two describe the same company. Ties on
+    # importance are broken deterministically by company name.
     rows = session.execute(text("""
-        SELECT a.title, a.url, a.source, a.published_at,
-               MAX(ac.importance) AS importance,
-               array_agg(ac.sentiment) FILTER (WHERE ac.sentiment IS NOT NULL) AS sentiments
-        FROM articles a
-        JOIN article_themes at ON at.article_id = a.id
-        JOIN themes t ON t.id = at.theme_id
-        LEFT JOIN article_companies ac ON ac.article_id = a.id
-        WHERE t.name = :theme
-          AND a.published_at >= :start AND a.published_at < :end
-        GROUP BY a.id, a.title, a.url, a.source, a.published_at
-        ORDER BY MAX(ac.importance) DESC NULLS LAST
+        SELECT title, url, source, published_at, importance, sentiment
+        FROM (
+            SELECT DISTINCT ON (a.id)
+                   a.id, a.title AS title, a.url AS url, a.source AS source,
+                   a.published_at AS published_at,
+                   ac.importance AS importance, ac.sentiment AS sentiment
+            FROM articles a
+            JOIN article_themes at ON at.article_id = a.id
+            JOIN themes t ON t.id = at.theme_id
+            LEFT JOIN article_companies ac ON ac.article_id = a.id
+            LEFT JOIN companies c ON c.id = ac.company_id
+            WHERE t.name = :theme
+              AND a.published_at >= :start AND a.published_at < :end
+            ORDER BY a.id, ac.importance DESC NULLS LAST, c.name ASC
+        ) sub
+        ORDER BY importance DESC NULLS LAST
         LIMIT :limit
     """), {"theme": theme_name, "start": start, "end": end, "limit": limit}).mappings()
     return [{
@@ -184,7 +175,7 @@ def top_articles(session, theme_name: str, start: datetime, end: datetime, limit
         "source": r["source"],
         "published_at": _iso(r["published_at"]),
         "importance": int(r["importance"]) if r["importance"] is not None else None,
-        "sentiment": _majority_sentiment(r["sentiments"] or []),
+        "sentiment": r["sentiment"],
     } for r in rows]
 
 
