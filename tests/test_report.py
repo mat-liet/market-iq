@@ -1,15 +1,22 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.services.taxonomy import seed_taxonomy
-from app.services.report import (
-    wow_growth_pct, count_articles, count_companies, top_companies,
-    emerging_associations, top_articles, generate_report, weighted_sentiment,
-)
+from app.services.report import wow_growth_pct, weighted_sentiment, ReportService
+from app.services.errors import UnknownThemeError
+from app.repositories.report import ReportRepository
+from app.repositories.theme import ThemeRepository
 from app.services.companies import upsert_company
 from app.workers.classification import store_classification
 from app.db.models import Article, Theme, ArticleTheme, ArticleCompany
 
 NOW = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def report_service(session):
+    return ReportService(ReportRepository(session), ThemeRepository(session))
 
 
 def test_wow_growth_basic():
@@ -80,35 +87,35 @@ def _tag(session, url, days_ago, theme_name, companies, source="cnbc"):
     return art
 
 
-def test_count_articles_in_window(session):
+def test_count_articles_in_window(session, report_service):
     seed_taxonomy(session)
     _article(session, "u1", days_ago=1)
     _article(session, "u2", days_ago=2)
     _article(session, "u3", days_ago=10)  # outside the 7-day window
 
-    count = count_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    count = report_service.count_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
     assert count == 2
 
 
-def test_emerging_association_excludes_prior_companies(session):
+def test_emerging_association_excludes_prior_companies(session, report_service):
     seed_taxonomy(session)
     # NVIDIA appeared 14 days ago (prior window) -> NOT emerging
     _article(session, "old", days_ago=14, company=("NVIDIA", "NVDA"))
     # Eaton appears this week only -> emerging
     _article(session, "new", days_ago=1, company=("Eaton", "ETN"))
 
-    emerging = emerging_associations(session, "AI Infrastructure", now=NOW)
+    emerging = report_service.emerging_associations("AI Infrastructure", now=NOW)
     names = {row["company"] for row in emerging}
     assert "Eaton" in names
     assert "NVIDIA" not in names
 
 
-def test_top_companies_includes_avg_sentiment_and_importance(session):
+def test_top_companies_includes_avg_sentiment_and_importance(session, report_service):
     seed_taxonomy(session)
     _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
     _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 6)])
 
-    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
     assert nvda["mentions"] == 2
     assert nvda["avg_importance"] == 7.0       # (8 + 6) / 2
@@ -116,44 +123,44 @@ def test_top_companies_includes_avg_sentiment_and_importance(session):
     assert nvda["sentiment_score"] == 1.0      # all positive -> +1
 
 
-def test_top_companies_sentiment_is_importance_weighted(session):
+def test_top_companies_sentiment_is_importance_weighted(session, report_service):
     seed_taxonomy(session)
     # equal-but-opposite importance nets to zero -> neutral (within deadband)
     _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
     _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "negative", 8)])
 
-    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
     assert nvda["sentiment_score"] == 0.0
     assert nvda["avg_sentiment"] == "neutral"
 
 
-def test_emerging_includes_first_seen_and_company(session):
+def test_emerging_includes_first_seen_and_company(session, report_service):
     seed_taxonomy(session)
     _tag(session, "e1", 3, "AI Infrastructure", [("Eaton", "ETN", "positive", 6)])
 
-    emerging = emerging_associations(session, "AI Infrastructure", now=NOW)
+    emerging = report_service.emerging_associations("AI Infrastructure", now=NOW)
     eaton = next(r for r in emerging if r["ticker"] == "ETN")
     assert eaton["company"] == "Eaton"
     assert eaton["first_seen"].startswith("2026-06-18")  # NOW - 3 days
 
 
-def test_count_companies_distinct_in_window(session):
+def test_count_companies_distinct_in_window(session, report_service):
     seed_taxonomy(session)
     _tag(session, "c1", 1, "AI Infrastructure",
          [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "neutral", 5)])
     _tag(session, "c2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 7)])
 
-    n = count_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    n = report_service.count_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
     assert n == 2  # NVIDIA + Eaton, counted once each
 
 
-def test_top_articles_includes_source_published_and_sentiment(session):
+def test_top_articles_includes_source_published_and_sentiment(session, report_service):
     seed_taxonomy(session)
     _tag(session, "art1", 1, "AI Infrastructure",
          [("NVIDIA", "NVDA", "positive", 8)], source="cnbc")
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
     r = rows[0]
     assert r["source"] == "cnbc"
     assert r["published_at"].startswith("2026-06-20")  # NOW - 1 day
@@ -161,29 +168,29 @@ def test_top_articles_includes_source_published_and_sentiment(session):
     assert r["importance"] == 8
 
 
-def test_top_articles_sentiment_from_driving_mention(session):
+def test_top_articles_sentiment_from_driving_mention(session, report_service):
     seed_taxonomy(session)
     # NVIDIA is the highest-importance mention -> it drives BOTH importance and sentiment
     _tag(session, "art1", 1, "AI Infrastructure",
          [("NVIDIA", "NVDA", "positive", 9), ("Eaton", "ETN", "negative", 3)])
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 9
     assert rows[0]["sentiment"] == "positive"   # from NVIDIA, not a majority vote
 
 
-def test_top_articles_importance_tie_broken_by_company_name(session):
+def test_top_articles_importance_tie_broken_by_company_name(session, report_service):
     seed_taxonomy(session)
     # equal importance -> deterministic tiebreak by company name ASC (Eaton < NVIDIA)
     _tag(session, "art1", 1, "AI Infrastructure",
          [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "negative", 8)])
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 8
     assert rows[0]["sentiment"] == "negative"   # Eaton wins the tie
 
 
-def test_top_articles_dedups_multi_company_article(session):
+def test_top_articles_dedups_multi_company_article(session, report_service):
     # An article tied to several companies must appear once, not once per company.
     seed_taxonomy(session)
     art = Article(url="multi", title="t", body="b", source="reuters",
@@ -198,16 +205,22 @@ def test_top_articles_dedups_multi_company_article(session):
     })
     session.flush()
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
     assert [r["url"] for r in rows] == ["multi"]
     assert rows[0]["importance"] == 7
 
 
-def test_generate_report_shape(session):
+def test_theme_report_unknown_theme_raises(session, report_service):
+    seed_taxonomy(session)
+    with pytest.raises(UnknownThemeError):
+        report_service.theme_report("Nonexistent Theme")
+
+
+def test_generate_report_shape(session, report_service):
     seed_taxonomy(session)
     _article(session, "u1", days_ago=1)
 
-    report = generate_report(session, now=NOW)
+    report = report_service.generate_report(now=NOW)
     assert "AI Infrastructure" in report["narratives"]
     ai = report["narratives"]["AI Infrastructure"]
     assert ai["article_count"] == 1
