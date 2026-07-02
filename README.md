@@ -195,14 +195,24 @@ calls** — so the suite is fast and deterministic.
 
 ## Project layout
 
+The backend is layered so business logic stays independent of data access:
+**repositories** own all database access (ORM and raw SQL, and never commit),
+**services** hold the business logic and are constructed with the repositories they
+need, and **routes and workers stay thin** — the API wires request-scoped
+repositories and services through FastAPI dependencies, and the scheduler builds them
+per run. Write-side services own the transaction boundary; no query logic lives in
+routes or workers.
+
 ```
 app/
-  api/routes.py        FastAPI router (health + report endpoints)
-  main.py              app factory + scheduler lifespan wiring
+  api/routes.py        FastAPI router + dependency wiring (health + report endpoints)
+  main.py              app factory + scheduler lifespan + error handlers
   config.py            env-driven Settings
   db/                  SQLAlchemy models + session
-  services/            body_extractor, llm, companies, taxonomy, report
-  workers/             ingestion, classification, scheduler
+  repositories/        data access only — report, theme, company, article
+  services/            business logic — report, companies, taxonomy, classification,
+                       ingestion (+ pure helpers: llm, body_extractor)
+  workers/             scheduler orchestration
 alembic/               migrations (0001 = head)
 scripts/               seed_taxonomy, review_classifications
 tests/                 pytest suite (Postgres-backed)
