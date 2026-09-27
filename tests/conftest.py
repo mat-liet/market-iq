@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models import Base
 
 # Mark the whole suite as the test environment so Settings.from_env() may use a
-# dummy Gemini key; production has no APP_ENV=test and must supply a real key.
+# dummy Anthropic key; production has no APP_ENV=test and must supply a real key.
 os.environ.setdefault("APP_ENV", "test")
 
 TEST_DB_URL = os.environ.get(

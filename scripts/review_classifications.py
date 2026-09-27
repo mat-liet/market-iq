@@ -7,17 +7,17 @@ Usage:
 """
 import sys
 
-from google import genai
+import anthropic
 
 from app.config import Settings
 from app.db.session import SessionLocal
 from app.db.models import Article
-from app.services.llm import build_prompt, parse_response, call_gemini, call_with_retry
+from app.services.llm import call_claude, parse_response
 
 
 def main(sample_size: int = 20) -> None:
     settings = Settings.from_env()
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     with SessionLocal() as session:
         articles = session.query(Article).limit(sample_size).all()
@@ -26,17 +26,22 @@ def main(sample_size: int = 20) -> None:
         print("No articles in the database. Run ingestion first.")
         return
 
+    print(f"Model: {settings.claude_model}  Effort: {settings.claude_effort or '(default)'}")
     for i, article in enumerate(articles, 1):
-        prompt = build_prompt({"title": article.title, "body": article.body or ""})
-        raw = call_with_retry(lambda: call_gemini(client, settings.gemini_model, prompt))
+        raw = call_claude(
+            client, settings.claude_model, settings.claude_effort,
+            {"title": article.title, "body": article.body or ""},
+        )
         parsed = parse_response(raw)
 
         print(f"\n{'=' * 70}\n[{i}/{len(articles)}] {article.title}\n{article.url}")
         print(f"{'-' * 70}")
         if parsed:
             print(f"Themes:     {parsed.get('themes')}")
-            print(f"Companies:  {parsed.get('companies')}")
-            print(f"Sentiment:  {parsed.get('sentiment')}   Importance: {parsed.get('importance')}")
+            print("Companies:")
+            for c in parsed.get("companies") or []:
+                print(f"  - {c.get('name')} ({c.get('ticker')}): "
+                      f"{c.get('sentiment')}, importance {c.get('importance')}")
             print(f"Reason:     {parsed.get('reason')}")
         else:
             print(f"PARSE FAILED. Raw response:\n{raw}")

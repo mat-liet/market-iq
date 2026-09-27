@@ -57,8 +57,7 @@ def _article(session, url, days_ago, theme="AI Infrastructure",
     session.flush()
     store_classification(session, art, {
         "themes": [{"name": theme, "confidence": 0.9}],
-        "companies": [{"name": company[0], "ticker": company[1]}],
-        "sentiment": "positive", "importance": 7,
+        "companies": [{"name": company[0], "ticker": company[1], "sentiment": "positive", "importance": 7}],
     })
     # store_classification adds ArticleTheme/ArticleCompany rows without
     # flushing; raw text() queries don't autoflush, so flush here so the
@@ -197,9 +196,8 @@ def test_top_articles_dedups_multi_company_article(session, report_service):
     session.flush()
     store_classification(session, art, {
         "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA"},
-                      {"name": "Eaton", "ticker": "ETN"}],
-        "sentiment": "positive", "importance": 7,
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 7},
+                      {"name": "Eaton", "ticker": "ETN", "sentiment": "positive", "importance": 7}],
     })
     session.flush()
 

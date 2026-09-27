@@ -82,12 +82,11 @@
 │  │                                                             │   │
 │  │   1. fetch batch of 10 unprocessed articles                │   │
 │  │   2. build prompt (inject taxonomy + article body)         │   │
-│  │   3. call Gemini Flash API                                 │   │
-│  │   4. parse JSON response (strip markdown fences)           │   │
-│  │   5. write themes, companies, sentiment to DB              │   │
-│  │   6. log raw response to classification_log               │   │
+│  │   3. call Claude API (structured JSON output)              │   │
+│  │   4. parse + validate JSON response                        │   │
+│  │   5. write themes, companies + per-company sentiment to DB │   │
+│  │   6. log raw response + model to classification_log        │   │
 │  │   7. mark article as processed = TRUE                      │   │
-│  │   8. sleep 4s (stay under 15 req/min rate limit)          │   │
 │  └──────────────────────┬──────────────────────────────────────┘   │
 └─────────────────────────┼───────────────────────────────────────────┘
                           │
@@ -96,12 +95,13 @@
 │                      EXTERNAL AI SERVICE                            │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                  Google Gemini Flash API                     │  │
-│  │                   (aistudio.google.com)                      │  │
+│  │                        Claude API                            │  │
+│  │              (model via CLAUDE_MODEL, default Sonnet 5)      │  │
 │  │                                                              │  │
-│  │   Free tier: 15 req/min · 1,500 req/day                    │  │
-│  │   Input:  article title + body + taxonomy prompt            │  │
-│  │   Output: themes, companies, sentiment, importance, reason  │  │
+│  │   Billed per token; SDK retries 429 / 5xx with backoff       │  │
+│  │   Input:  taxonomy system prompt + article title + body      │  │
+│  │   Output: themes, companies (each with sentiment,            │  │
+│  │           importance), reason                                │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                           │
@@ -190,12 +190,12 @@ Timeline (each hour)
 
 3. Classification Worker (picks up unprocessed articles)
    └─► builds prompt with article body + taxonomy
-   └─► POST to Gemini Flash API
-   └─► receives JSON: themes, companies, sentiment, importance, reason
+   └─► POST to Claude API (JSON schema enforced by structured outputs)
+   └─► receives JSON: themes, companies (each with sentiment, importance), reason
    └─► parses and validates response
    └─► INSERT into article_themes (one row per theme)
    └─► INSERT into article_companies (one row per company)
-   └─► INSERT into classification_log (raw response, parsed_ok)
+   └─► INSERT into classification_log (raw response, parsed_ok, model)
    └─► UPDATE articles SET processed = TRUE
 
 4. Report Generator (daily)
@@ -220,9 +220,9 @@ Timeline (each hour)
 | Component | Runs | Responsibility |
 |---|---|---|
 | Ingestion Worker | Every 30 min | Fetch RSS feeds, extract article bodies, store raw articles |
-| Classification Worker | Every 15 min | Classify unprocessed articles via Gemini, store structured signals |
+| Classification Worker | Every 15 min | Classify unprocessed articles via Claude, store structured signals |
 | PostgreSQL | Always on | Persist all articles, themes, companies, relationships, logs |
-| Gemini Flash API | On demand | Extract themes, companies, sentiment from article text |
+| Claude API | On demand | Extract themes, companies, per-company sentiment from article text |
 | Report Generator | Daily 07:00 UTC | Aggregate signals into narrative report |
 | FastAPI | Always on | Serve report data via REST API |
 | React Dashboard | Browser | Visualise narrative momentum and company associations |
@@ -248,14 +248,14 @@ Timeline (each hour)
 │  │  └────────────┘  └────────────────┘ │   │
 │  └──────────────────────────────────────┘   │
 │                                              │
-│  .env  →  GEMINI_API_KEY                    │
+│  .env  →  ANTHROPIC_API_KEY                 │
 │            DATABASE_URL                      │
 └──────────────────────────────────────────────┘
                      │
                      │ outbound HTTPS only
                      ▼
         ┌────────────────────────┐
-        │   Google Gemini API    │
+        │   Claude API           │
         │   RSS Feed endpoints   │
         │   SEC EDGAR (optional) │
         │   NewsAPI (optional)   │
@@ -273,22 +273,25 @@ VALUES (:url, :title, :body, :source, :published_at, FALSE)
 ON CONFLICT (url) DO NOTHING;
 ```
 
-### Classification Worker → Gemini Flash API
+### Classification Worker → Claude API
 ```
-Called via the google-genai SDK (client.models.generate_content), model: gemini-flash-latest
-(confirm current Flash model id at build time). Underlying REST endpoint:
-POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+Called via the anthropic SDK (client.messages.create), model: CLAUDE_MODEL
+(default claude-sonnet-5). Underlying REST endpoint:
+POST https://api.anthropic.com/v1/messages
 
-Headers:  x-goog-api-key: {GEMINI_API_KEY}
-Body:     { contents: [{ parts: [{ text: "{prompt}" }] }] }
-Response: { candidates: [{ content: { parts: [{ text: "{json}" }] } }] }
+Headers:  x-api-key: {ANTHROPIC_API_KEY}
+Body:     { model, max_tokens, system: "{taxonomy prompt}",
+            messages: [{ role: "user", content: "{title + body}" }],
+            output_config: { effort: CLAUDE_EFFORT,
+                             format: { type: "json_schema", schema: {...} } } }
+Response: { content: [{ type: "text", text: "{json}" }], stop_reason, usage }
 ```
 
 ### Classification Worker → PostgreSQL
 ```
 INSERT INTO article_themes (article_id, theme_id, confidence) VALUES (...)
 INSERT INTO article_companies (article_id, company_id, sentiment, importance) VALUES (...)
-INSERT INTO classification_log (article_id, raw_response, parsed_ok) VALUES (...)
+INSERT INTO classification_log (article_id, raw_response, parsed_ok, model) VALUES (...)
 UPDATE articles SET processed = TRUE WHERE id = :id
 ```
 

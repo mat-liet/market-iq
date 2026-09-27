@@ -35,7 +35,7 @@ Set under: repo **Settings → Secrets and variables → Actions → New reposit
 | `VPS_HOST` | Server IP address or hostname |
 | `VPS_USER` | SSH username (e.g. `deploy`) |
 
-> `GEMINI_API_KEY` and `DATABASE_URL` are **not** GitHub secrets. They live in a `.env` file on the server itself, read by Docker Compose at runtime. This keeps API credentials off the CI platform and avoids re-injecting them on every deploy.
+> `ANTHROPIC_API_KEY` and `DATABASE_URL` are **not** GitHub secrets. They live in a `.env` file on the server itself, read by Docker Compose at runtime. This keeps API credentials off the CI platform and avoids re-injecting them on every deploy.
 
 ---
 
@@ -117,7 +117,7 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_market_narrative
-          GEMINI_API_KEY: dummy-key-for-tests
+          ANTHROPIC_API_KEY: dummy-key-for-tests
         run: pytest -v
 
   # ───────────────────────────────────────────────
@@ -166,7 +166,7 @@ Tests run on pushes to `main` **and** on pull requests targeting `main`. Deploym
 - Spins up a **throwaway PostgreSQL 15 container** as a service, so tests run against a real database, not mocks.
 - The `health-cmd` block ensures the test steps wait until Postgres is actually ready before running.
 - Runs Alembic migrations first, then pytest — this also validates that your migrations apply cleanly to a fresh database, which catches a whole class of bugs.
-- `GEMINI_API_KEY` is a dummy value here — your tests should mock the Gemini API rather than make real calls. (Real API calls in CI are slow, flaky, and burn your free-tier quota.)
+- `ANTHROPIC_API_KEY` is a dummy value here — your tests should mock the Claude API rather than make real calls. (Real API calls in CI are slow, flaky, and cost money.)
 
 ### The deploy job
 
@@ -215,7 +215,7 @@ cd /app
 
 # Create the .env file with real secrets (never committed to git)
 cat > .env << 'EOF'
-GEMINI_API_KEY=your_real_key_from_aistudio
+ANTHROPIC_API_KEY=your_real_claude_api_key
 DATABASE_URL=postgresql://user:password@postgres:5432/market_narrative
 EOF
 

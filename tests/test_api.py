@@ -32,8 +32,7 @@ def test_daily_report(client, session):
     session.flush()
     store_classification(session, art, {
         "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
-        "sentiment": "positive", "importance": 8,
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 8}],
     })
 
     resp = client.get("/report/daily")
@@ -56,8 +55,7 @@ def test_single_theme_report_includes_company_count_and_company_fields(client, s
     session.flush()
     store_classification(session, art, {
         "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
-        "sentiment": "positive", "importance": 8,
+        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 8}],
     })
     session.flush()
 
@@ -80,8 +78,7 @@ def test_single_theme_report_includes_wow_growth(client, session):
         session.flush()
         store_classification(session, art, {
             "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-            "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
-            "sentiment": "positive", "importance": 7,
+            "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 7}],
         })
     session.flush()
 

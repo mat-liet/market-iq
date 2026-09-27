@@ -24,8 +24,8 @@ RSS feeds (CNBC, Yahoo Finance, MarketWatch)
         │                  body extraction (trafilatura, SSRF-guarded)
         ▼                         │
  Classification worker ◄──────────┘                            [every 15 min]
-   (Gemini Flash)
-        │  themes + companies + sentiment/importance
+   (Claude)
+        │  themes + companies, each with sentiment/importance
         ▼
  Structured signals (PostgreSQL)
         │
@@ -52,7 +52,7 @@ The fastest path — Postgres, the API, and the dashboard come up together; migr
 and taxonomy seeding run automatically on startup.
 
 ```bash
-cp .env.example .env          # then edit GEMINI_API_KEY
+cp .env.example .env          # then edit ANTHROPIC_API_KEY
 docker compose up --build
 ```
 
@@ -78,7 +78,7 @@ Requires **Python 3.13** (the Docker image uses 3.11) and a reachable **PostgreS
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env          # edit DATABASE_URL + GEMINI_API_KEY
+cp .env.example .env          # edit DATABASE_URL + ANTHROPIC_API_KEY
 export $(grep -v '^#' .env | xargs)   # or use your own env loader
 
 # Bring the schema and taxonomy up
@@ -131,14 +131,15 @@ Configuration is read from the environment (see `app/config.py` and `.env.exampl
 | Variable           | Required | Default                  | Notes |
 |--------------------|----------|--------------------------|-------|
 | `DATABASE_URL`     | yes      | —                        | SQLAlchemy URL, e.g. `postgresql://market:market@localhost:5432/market_narrative` |
-| `GEMINI_API_KEY`   | yes\*    | —                        | Google AI Studio key. Missing key **fails fast** unless `APP_ENV=test`. |
-| `GEMINI_MODEL`     | no       | `gemini-2.5-flash-lite`  | Flash-lite avoids JSON truncation from thinking tokens on the free tier. |
+| `ANTHROPIC_API_KEY`| yes\*    | —                        | Claude API key. Missing key **fails fast** unless `APP_ENV=test`. |
+| `CLAUDE_MODEL`     | no       | `claude-sonnet-5`        | Model used for classification, e.g. `claude-opus-5` or `claude-haiku-4-5`. Recorded per row in `classification_log.model`. |
+| `CLAUDE_EFFORT`    | no       | `low`                    | Reasoning effort (`low`–`max`). Set empty for models without effort support (`claude-haiku-4-5`). |
 | `ENABLE_SCHEDULER` | no       | `true`                   | Set `false` to run the API without the background workers. |
-| `APP_ENV`          | no       | —                        | `test` permits a dummy Gemini key (used by the test suite). |
+| `APP_ENV`          | no       | —                        | `test` permits a dummy API key (used by the test suite). |
 
 \* The key is a sensitive credential — it is git-ignored via `.env` and must never be
-committed. The free tier allows **20 generate-content requests/day per model**, so
-classification batches are sized and paced accordingly.
+committed. Claude API usage is billed per token; transient errors (rate limits, overload)
+are retried by the SDK with backoff.
 
 ---
 
@@ -161,16 +162,16 @@ OpenAPI/Swagger UI is served at `/docs`.
 
 ## Data model
 
-PostgreSQL, managed by Alembic (`alembic/versions/0001_initial_schema.py` is head).
+PostgreSQL, managed by Alembic (`alembic/versions/0002_classification_log_model.py` is head).
 
 - **`articles`** — raw ingested news (`url` unique, `processed` flag drives the queue)
 - **`themes`** — the fixed narrative taxonomy (seeded; the LLM may not invent themes)
 - **`companies`** — deduplicated by unique `normalized_name` and unique `ticker`
 - **`article_themes`** — article↔theme with `confidence`
-- **`article_companies`** — article↔company with `sentiment`
+- **`article_companies`** — article↔company with that company's own `sentiment`
   (`positive`/`negative`/`neutral`, enforced by `ck_sentiment`) and `importance`
   (1–10, enforced by `ck_importance`)
-- **`classification_log`** — every LLM response (raw + `parsed_ok`) for auditing
+- **`classification_log`** — every LLM response (raw + `parsed_ok` + `model`) for auditing
 
 The migration is the source of truth for the schema; `tests/test_migration.py`
 asserts the constraints and indexes the application relies on so drift is caught.
@@ -184,11 +185,11 @@ disposable test database:
 
 ```bash
 export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/market_iq_test"
-export APP_ENV=test          # allows a dummy Gemini key; no live API calls in tests
+export APP_ENV=test          # allows a dummy API key; no live API calls in tests
 pytest -q
 ```
 
-Tests use fakes for the Gemini client and HTTP fetching — **no network or live LLM
+Tests use fakes for the Claude client and HTTP fetching — **no network or live LLM
 calls** — so the suite is fast and deterministic.
 
 ---
@@ -213,7 +214,7 @@ app/
   services/            business logic — report, companies, taxonomy, classification,
                        ingestion (+ pure helpers: llm, body_extractor)
   workers/             scheduler orchestration
-alembic/               migrations (0001 = head)
+alembic/               migrations (0002 = head)
 scripts/               seed_taxonomy, review_classifications
 tests/                 pytest suite (Postgres-backed)
 docs/                  design, architecture, CI/CD docs

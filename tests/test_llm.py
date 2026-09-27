@@ -1,22 +1,39 @@
-from app.services.llm import build_prompt, parse_response, call_with_retry
+from app.services.llm import (
+    OUTPUT_SCHEMA, build_system_prompt, build_user_message, call_claude, parse_response,
+)
+from tests.fixtures import FakeClaudeClient
 
 
-def test_prompt_includes_all_taxonomy_themes():
-    prompt = build_prompt({"title": "T", "body": "B"})
+def test_system_prompt_includes_all_taxonomy_themes():
+    prompt = build_system_prompt()
     assert "AI Infrastructure" in prompt
     assert "Nuclear Energy" in prompt
     assert "Defence Spending" in prompt
-    assert "T" in prompt and "B" in prompt
+
+
+def test_user_message_carries_title_and_body():
+    msg = build_user_message({"title": "T", "body": "B"})
+    assert "T" in msg and "B" in msg
+
+
+def test_schema_constrains_theme_names_to_taxonomy():
+    theme_names = OUTPUT_SCHEMA["properties"]["themes"]["items"]["properties"]["name"]["enum"]
+    assert set(theme_names) == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+
+
+def test_schema_requires_per_company_sentiment_and_importance():
+    company = OUTPUT_SCHEMA["properties"]["companies"]["items"]
+    assert {"sentiment", "importance"}.issubset(company["required"])
+    assert company["properties"]["sentiment"]["enum"] == ["positive", "negative", "neutral"]
 
 
 def test_parse_plain_json():
-    raw = '{"themes": [], "companies": [], "sentiment": "neutral", "importance": 1}'
-    assert parse_response(raw)["sentiment"] == "neutral"
+    raw = '{"themes": [], "companies": [], "reason": "x"}'
+    assert parse_response(raw)["reason"] == "x"
 
 
-def test_parse_strips_markdown_fences():
-    raw = '```json\n{"sentiment": "positive"}\n```'
-    assert parse_response(raw)["sentiment"] == "positive"
+def test_parse_returns_none_on_truncated_json():
+    assert parse_response('{"themes": [{"name": "AI Infra') is None
 
 
 def test_parse_returns_none_on_garbage():
@@ -31,63 +48,29 @@ def test_parse_returns_none_on_none():
     assert parse_response(None) is None
 
 
-def test_retry_succeeds_after_429():
-    calls = {"n": 0}
+def test_call_claude_sends_model_schema_and_effort():
+    client = FakeClaudeClient(['{"themes": [], "companies": [], "reason": "x"}'])
 
-    def flaky():
-        calls["n"] += 1
-        if calls["n"] < 3:
-            raise RuntimeError("429 RESOURCE_EXHAUSTED")
-        return "ok"
+    raw = call_claude(client, "claude-sonnet-5", "low", {"title": "T", "body": "B"})
 
-    sleeps = []
-    result = call_with_retry(flaky, retries=3, base_delay=2.0, sleeper=sleeps.append)
-
-    assert result == "ok"
-    assert calls["n"] == 3
-    assert sleeps == [2.0, 4.0]  # exponential backoff before attempts 2 and 3
+    assert raw == '{"themes": [], "companies": [], "reason": "x"}'
+    kwargs = client.messages.calls[0]
+    assert kwargs["model"] == "claude-sonnet-5"
+    assert kwargs["output_config"]["effort"] == "low"
+    assert kwargs["output_config"]["format"] == {"type": "json_schema", "schema": OUTPUT_SCHEMA}
+    assert kwargs["system"] == build_system_prompt()
 
 
-def test_retry_reraises_non_rate_limit_errors_immediately():
-    def boom():
-        raise ValueError("bad request")
+def test_call_claude_omits_effort_when_unset():
+    """Models without effort support (e.g. Haiku 4.5) reject the parameter."""
+    client = FakeClaudeClient(['{}'])
 
-    sleeps = []
-    try:
-        call_with_retry(boom, retries=3, sleeper=sleeps.append)
-        assert False, "should have raised"
-    except ValueError:
-        pass
-    assert sleeps == []  # no backoff for non-429 errors
+    call_claude(client, "claude-haiku-4-5", None, {"title": "T", "body": "B"})
+
+    assert "effort" not in client.messages.calls[0]["output_config"]
 
 
-def test_retry_does_not_fire_on_bare_code_in_unrelated_message():
-    """A status code embedded in unrelated text (e.g. a JSON body) must not be
-    mistaken for a transient status and retried."""
-    def boom():
-        raise ValueError('bad request: {"count": 503, "id": 429}')
+def test_call_claude_returns_none_without_text():
+    client = FakeClaudeClient([None])  # e.g. a refusal with no text block
 
-    sleeps = []
-    try:
-        call_with_retry(boom, retries=3, sleeper=sleeps.append)
-        assert False, "should have raised"
-    except ValueError:
-        pass
-    assert sleeps == []  # not treated as transient
-
-
-def test_retry_succeeds_after_503():
-    calls = {"n": 0}
-
-    def flaky():
-        calls["n"] += 1
-        if calls["n"] < 3:
-            raise RuntimeError("503 UNAVAILABLE")
-        return "ok"
-
-    sleeps = []
-    result = call_with_retry(flaky, retries=3, base_delay=2.0, sleeper=sleeps.append)
-
-    assert result == "ok"
-    assert calls["n"] == 3
-    assert sleeps == [2.0, 4.0]  # exponential backoff before attempts 2 and 3
+    assert call_claude(client, "m", None, {"title": "T", "body": "B"}) is None

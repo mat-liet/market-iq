@@ -95,4 +95,5 @@ class ClassificationLog(Base):
     article_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("articles.id"))
     raw_response: Mapped[str | None] = mapped_column(Text)
     parsed_ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    model: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
