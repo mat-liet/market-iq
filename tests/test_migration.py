@@ -63,6 +63,10 @@ def test_migration_has_constraints_the_app_relies_on():
     check_names = {c["name"] for c in insp.get_check_constraints("article_companies")}
     assert {"ck_sentiment", "ck_importance"}.issubset(check_names)
 
+    # The classifying model is recorded per log row (added in 0002).
+    log_columns = {c["name"] for c in insp.get_columns("classification_log")}
+    assert "model" in log_columns
+
     # Query-supporting indexes the report depends on.
     article_indexes = {ix["name"] for ix in insp.get_indexes("articles")}
     assert {"idx_articles_processed", "idx_articles_published"}.issubset(article_indexes)

@@ -40,7 +40,8 @@ class ArticleRepository:
             sentiment=sentiment, importance=importance,
         ))
 
-    def add_classification_log(self, article_id, raw_response, parsed_ok) -> None:
+    def add_classification_log(self, article_id, raw_response, parsed_ok, model) -> None:
         self.session.add(ClassificationLog(
             article_id=article_id, raw_response=raw_response, parsed_ok=parsed_ok,
+            model=model,
         ))

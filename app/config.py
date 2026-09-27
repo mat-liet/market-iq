@@ -5,24 +5,27 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    gemini_api_key: str
-    gemini_model: str
+    anthropic_api_key: str
+    claude_model: str
+    claude_effort: str | None
 
     @classmethod
     def from_env(cls) -> "Settings":
-        gemini_api_key = os.environ.get("GEMINI_API_KEY")
-        if not gemini_api_key:
+        anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not anthropic_api_key:
             # Only fall back to a dummy under an explicit test flag. In any
             # other environment a missing key must fail fast rather than letting
-            # every Gemini call silently error out as an auth failure.
+            # every Claude call silently error out as an auth failure.
             if os.environ.get("APP_ENV") == "test":
-                gemini_api_key = "dummy-key-for-tests"
+                anthropic_api_key = "dummy-key-for-tests"
             else:
                 raise RuntimeError(
-                    "GEMINI_API_KEY is not set (set APP_ENV=test to use a dummy key)"
+                    "ANTHROPIC_API_KEY is not set (set APP_ENV=test to use a dummy key)"
                 )
         return cls(
             database_url=os.environ["DATABASE_URL"],
-            gemini_api_key=gemini_api_key,
-            gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+            anthropic_api_key=anthropic_api_key,
+            claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-5"),
+            # Empty string omits effort, for models that don't support it (Haiku 4.5).
+            claude_effort=os.environ.get("CLAUDE_EFFORT", "low") or None,
         )

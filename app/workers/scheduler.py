@@ -2,7 +2,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from google import genai
+import anthropic
 
 from app.config import Settings
 from app.db.session import SessionLocal
@@ -16,16 +16,18 @@ from app.services.ingestion import RSS_SOURCES, IngestionService, fetch_feed
 
 logger = logging.getLogger(__name__)
 
-_gemini_client = None
+_claude_client = None
 
 
-def _get_gemini_client(settings: Settings):
-    """Lazily build a single google-genai client and reuse it across runs so we
-    don't leak an httpx connection pool on every scheduled classification."""
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=settings.gemini_api_key)
-    return _gemini_client
+def _get_claude_client(settings: Settings):
+    """Lazily build a single Anthropic client and reuse it across runs so we
+    don't leak a connection pool on every scheduled classification. The SDK
+    retries 429/5xx/connection errors with backoff; allow a few more attempts
+    than its default of 2 since classification is not latency-sensitive."""
+    global _claude_client
+    if _claude_client is None:
+        _claude_client = anthropic.Anthropic(api_key=settings.anthropic_api_key, max_retries=4)
+    return _claude_client
 
 
 def run_ingestion() -> None:
@@ -42,7 +44,7 @@ def run_ingestion() -> None:
 
 def run_classification() -> None:
     settings = Settings.from_env()
-    client = _get_gemini_client(settings)
+    client = _get_claude_client(settings)
     with SessionLocal() as session:
         service = ClassificationService(
             ArticleRepository(session),
@@ -50,7 +52,7 @@ def run_classification() -> None:
             CompanyService(CompanyRepository(session)),
             session,
         )
-        service.classify_batch(client, settings.gemini_model)
+        service.classify_batch(client, settings.claude_model, settings.claude_effort)
 
 
 def build_scheduler() -> BackgroundScheduler:
