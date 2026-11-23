@@ -1,0 +1,15 @@
+# Secrets and local state must never be baked into an image.
+.env
+deploy_key
+deploy_key.pub
+.git
+.venv
+.pytest_cache
+**/__pycache__
+**/*.pyc
+.DS_Store
+frontend/node_modules
+frontend/dist
+# Private feeds/taxonomy are mounted at runtime (see docker-compose.yml).
+config/*.json
+!config/*.example.json

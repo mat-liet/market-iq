@@ -63,8 +63,17 @@ Rules:
 - Reason: one sentence on why this article matters."""
 
 
+# Cap on the article body sent to Claude. News articles carry their narrative in
+# the opening paragraphs; the cap bounds the cost of the occasional very long
+# piece (some feeds publish 15-35k-character essays). The stored body is untouched.
+MAX_BODY_CHARS = 8000
+
+
 def build_user_message(article: dict) -> str:
-    return f"Article title: {article['title']}\nArticle body: {article['body']}"
+    body = article["body"] or ""
+    if len(body) > MAX_BODY_CHARS:
+        body = body[:MAX_BODY_CHARS] + "\n[article truncated]"
+    return f"Article title: {article['title']}\nArticle body: {body}"
 
 
 def parse_response(raw: str | None) -> dict | None:

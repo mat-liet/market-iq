@@ -7,17 +7,17 @@ def _seed(session):
     TaxonomyService(ThemeRepository(session), session).seed_taxonomy()
 
 
-def test_taxonomy_has_three_themes():
-    assert set(TAXONOMY) == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+def test_taxonomy_is_non_empty():
+    assert TAXONOMY and all(TAXONOMY.values())
 
 
 def test_seed_inserts_themes(session):
     _seed(session)
     names = {t.name for t in session.query(Theme).all()}
-    assert names == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+    assert names == set(TAXONOMY)
 
 
 def test_seed_is_idempotent(session):
     _seed(session)
     _seed(session)
-    assert session.query(Theme).count() == 3
+    assert session.query(Theme).count() == len(TAXONOMY)

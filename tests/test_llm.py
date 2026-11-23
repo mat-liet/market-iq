@@ -1,14 +1,15 @@
 from app.services.llm import (
     OUTPUT_SCHEMA, build_system_prompt, build_user_message, call_claude, parse_response,
 )
+from app.services.llm import MAX_BODY_CHARS
+from app.services.taxonomy import TAXONOMY
 from tests.fixtures import FakeClaudeClient
 
 
 def test_system_prompt_includes_all_taxonomy_themes():
     prompt = build_system_prompt()
-    assert "AI Infrastructure" in prompt
-    assert "Nuclear Energy" in prompt
-    assert "Defence Spending" in prompt
+    for name in TAXONOMY:
+        assert name in prompt
 
 
 def test_user_message_carries_title_and_body():
@@ -16,9 +17,19 @@ def test_user_message_carries_title_and_body():
     assert "T" in msg and "B" in msg
 
 
+def test_user_message_caps_long_bodies():
+    msg = build_user_message({"title": "T", "body": "x" * (MAX_BODY_CHARS + 500)})
+    assert msg.count("x") == MAX_BODY_CHARS
+    assert msg.endswith("[article truncated]")
+
+
+def test_user_message_tolerates_missing_body():
+    assert "None" not in build_user_message({"title": "T", "body": None})
+
+
 def test_schema_constrains_theme_names_to_taxonomy():
     theme_names = OUTPUT_SCHEMA["properties"]["themes"]["items"]["properties"]["name"]["enum"]
-    assert set(theme_names) == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+    assert set(theme_names) == set(TAXONOMY)
 
 
 def test_schema_requires_per_company_sentiment_and_importance():

@@ -16,7 +16,7 @@ built on.
 ## How it works
 
 ```
-RSS feeds (CNBC, Yahoo Finance, MarketWatch)
+RSS feeds (config/feeds.json)
         │
         ▼
  Ingestion worker ──► articles (PostgreSQL, processed=false)   [every 30 min]
@@ -53,6 +53,8 @@ and taxonomy seeding run automatically on startup.
 
 ```bash
 cp .env.example .env          # then edit ANTHROPIC_API_KEY
+cp config/feeds.example.json config/feeds.json
+cp config/taxonomy.example.json config/taxonomy.json
 docker compose up --build
 ```
 
@@ -68,6 +70,43 @@ On startup the container entrypoint (`docker-entrypoint.sh`) runs
 `alembic upgrade head` and seeds the taxonomy (idempotent) **before** serving, so a
 fresh database comes up fully usable.
 
+To run it on a server, see [`docs/deployment.md`](docs/deployment.md).
+
+---
+
+## Feeds and taxonomy
+
+The feed list and the narrative taxonomy are deployment configuration, not code.
+They are read from two JSON files, `config/feeds.json` and `config/taxonomy.json`
+(paths overridable with `FEEDS_FILE` and `TAXONOMY_FILE`). Both are git-ignored, so
+your own sources and narratives never land in the repository; the committed
+`*.example.json` files show the format:
+
+```jsonc
+// config/feeds.json: source name -> RSS/Atom URL
+{ "cnbc": "https://www.cnbc.com/id/100003114/device/rss/rss.html" }
+
+// config/taxonomy.json: narrative name -> keywords that describe it to the model
+{ "Nuclear Energy": ["uranium", "small modular reactor", "nuclear power"] }
+```
+
+If a file is missing the app refuses to start (the test suite alone falls back to
+the examples). In Docker, `config/` is mounted into the container, so edits need
+only a restart. New narratives are seeded on startup and apply to articles
+classified from then on; removing a narrative from the file does not delete it from
+the database.
+
+Feed URLs drift and some publishers paywall or block text extraction. Check them
+before relying on a list:
+
+```bash
+python -m scripts.check_feeds   # DEAD / HEADLINES-ONLY / OK per feed; exits 1 if any is dead
+```
+
+Article bodies longer than 8,000 characters are truncated before classification
+(`MAX_BODY_CHARS` in `app/services/llm.py`) to bound cost; the stored body is kept
+in full.
+
 ---
 
 ## Local development
@@ -79,6 +118,8 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env          # edit DATABASE_URL + ANTHROPIC_API_KEY
+cp config/feeds.example.json config/feeds.json
+cp config/taxonomy.example.json config/taxonomy.json
 export $(grep -v '^#' .env | xargs)   # or use your own env loader
 
 # Bring the schema and taxonomy up
@@ -134,6 +175,8 @@ Configuration is read from the environment (see `app/config.py` and `.env.exampl
 | `ANTHROPIC_API_KEY`| yes\*    | —                        | Claude API key. Missing key **fails fast** unless `APP_ENV=test`. |
 | `CLAUDE_MODEL`     | no       | `claude-sonnet-5`        | Model used for classification, e.g. `claude-opus-5` or `claude-haiku-4-5`. Recorded per row in `classification_log.model`. |
 | `CLAUDE_EFFORT`    | no       | `low`                    | Reasoning effort (`low`–`max`). Set empty for models without effort support (`claude-haiku-4-5`). |
+| `FEEDS_FILE`       | no       | `config/feeds.json`      | Feed list, see [Feeds and taxonomy](#feeds-and-taxonomy). |
+| `TAXONOMY_FILE`    | no       | `config/taxonomy.json`   | Narrative taxonomy, same format notes. |
 | `ENABLE_SCHEDULER` | no       | `true`                   | Set `false` to run the API without the background workers. |
 | `APP_ENV`          | no       | —                        | `test` permits a dummy API key (used by the test suite). |
 
@@ -212,10 +255,12 @@ app/
   db/                  SQLAlchemy models + session
   repositories/        data access only — report, theme, company, article
   services/            business logic — report, companies, taxonomy, classification,
-                       ingestion (+ pure helpers: llm, body_extractor)
+                       ingestion (+ pure helpers: llm, body_extractor, config_files)
   workers/             scheduler orchestration
 alembic/               migrations (0002 = head)
-scripts/               seed_taxonomy, review_classifications
+scripts/               seed_taxonomy, review_classifications, check_feeds
+config/                feeds + taxonomy (only *.example.json committed)
+deploy/                Caddyfile + database backup script for docker-compose.prod.yml
 tests/                 pytest suite (Postgres-backed)
 docs/                  design, architecture, CI/CD docs
 frontend/              React + TypeScript dashboard (Vite, served by nginx in Docker)

@@ -1,0 +1,9 @@
+# Values come from .env. SITE_ADDRESS is a hostname pointing at this server;
+# Caddy obtains and renews its HTTPS certificate automatically.
+{$SITE_ADDRESS} {
+	encode gzip
+	basic_auth {
+		{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+	}
+	reverse_proxy frontend:80
+}

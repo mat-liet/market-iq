@@ -1,10 +1,57 @@
-from app.services.ingestion import RSS_SOURCES, fetch_feed
+import json
+
+import pytest
+
+from app.services.config_files import CONFIG_DIR, load_feeds, load_taxonomy
+from app.services.ingestion import fetch_feed
 
 
-def test_three_sources_configured():
-    # Equality (not superset) so an accidentally added/restored dead feed —
-    # which verify_feed would hit on every ingestion run — fails the test.
-    assert set(RSS_SOURCES) == {"cnbc", "yahoo", "marketwatch"}
+def _write(tmp_path, name, data):
+    path = tmp_path / name
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_example_files_are_valid():
+    assert load_feeds(CONFIG_DIR / "feeds.example.json")
+    assert load_taxonomy(CONFIG_DIR / "taxonomy.example.json")
+
+
+def test_loads_feeds_from_env_path(tmp_path, monkeypatch):
+    path = _write(tmp_path, "feeds.json", {"src": "https://example.com/rss"})
+    monkeypatch.setenv("FEEDS_FILE", str(path))
+    assert load_feeds() == {"src": "https://example.com/rss"}
+
+
+def test_loads_taxonomy_from_env_path(tmp_path, monkeypatch):
+    path = _write(tmp_path, "taxonomy.json", {"Theme": ["kw"]})
+    monkeypatch.setenv("TAXONOMY_FILE", str(path))
+    assert load_taxonomy() == {"Theme": ["kw"]}
+
+
+def test_missing_config_fails_fast_outside_tests(tmp_path, monkeypatch):
+    monkeypatch.setenv("FEEDS_FILE", str(tmp_path / "absent.json"))
+    monkeypatch.delenv("APP_ENV", raising=False)
+    with pytest.raises(RuntimeError, match="FEEDS_FILE"):
+        load_feeds()
+
+
+def test_missing_config_uses_example_under_test_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("TAXONOMY_FILE", str(tmp_path / "absent.json"))
+    monkeypatch.setenv("APP_ENV", "test")
+    assert load_taxonomy() == load_taxonomy(CONFIG_DIR / "taxonomy.example.json")
+
+
+@pytest.mark.parametrize("data", [{}, [], {"src": "ftp://x"}, {"src": 3}])
+def test_rejects_malformed_feeds(tmp_path, data):
+    with pytest.raises(ValueError):
+        load_feeds(_write(tmp_path, "feeds.json", data))
+
+
+@pytest.mark.parametrize("data", [{}, {"Theme": []}, {"Theme": "kw"}, {"Theme": [1]}])
+def test_rejects_malformed_taxonomy(tmp_path, data):
+    with pytest.raises(ValueError):
+        load_taxonomy(_write(tmp_path, "taxonomy.json", data))
 
 
 def test_parses_a_static_feed(monkeypatch):
