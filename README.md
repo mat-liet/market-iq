@@ -84,10 +84,10 @@ your own sources and narratives never land in the repository; the committed
 
 ```jsonc
 // config/feeds.json: source name -> RSS/Atom URL
-{ "cnbc": "https://www.cnbc.com/id/100003114/device/rss/rss.html" }
+{ "npr_business": "https://feeds.npr.org/1006/rss.xml" }
 
 // config/taxonomy.json: narrative name -> keywords that describe it to the model
-{ "Nuclear Energy": ["uranium", "small modular reactor", "nuclear power"] }
+{ "Consumer Credit": ["credit card debt", "delinquencies", "consumer loans", "buy now pay later", "credit spreads"] }
 ```
 
 If a file is missing the app refuses to start (the test suite alone falls back to

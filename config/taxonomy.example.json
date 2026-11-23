@@ -1,36 +1,23 @@
 {
-  "AI Infrastructure": [
-    "artificial intelligence",
-    "LLM",
-    "large language model",
-    "GPU",
-    "datacentre",
-    "data center",
-    "inference",
-    "foundation model",
-    "AI chips",
-    "NVIDIA",
-    "accelerator"
+  "Cloud Software": [
+    "cloud computing",
+    "SaaS",
+    "subscription software",
+    "enterprise software",
+    "cloud migration"
   ],
-  "Nuclear Energy": [
-    "uranium",
-    "SMR",
-    "small modular reactor",
-    "nuclear power",
-    "reactor",
-    "nuclear energy",
-    "enriched uranium",
-    "nuclear plant"
+  "Consumer Credit": [
+    "credit card debt",
+    "delinquencies",
+    "consumer loans",
+    "buy now pay later",
+    "credit spreads"
   ],
-  "Defence Spending": [
-    "defence budget",
-    "defense budget",
-    "military spending",
-    "missile systems",
-    "defence contracts",
-    "defense contracts",
-    "NATO spending",
-    "military procurement",
-    "arms"
+  "Housing Market": [
+    "mortgage rates",
+    "home sales",
+    "housing starts",
+    "home prices",
+    "homebuilders"
   ]
 }

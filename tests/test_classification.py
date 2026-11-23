@@ -24,7 +24,7 @@ def _service(session):
 
 
 def _add_article(session, url="https://a.com/1"):
-    article = Article(url=url, title="AI news", body="NVIDIA datacentre expansion",
+    article = Article(url=url, title="Cloud news", body="Azure revenue growth accelerates",
                       source="reuters", published_at=datetime.now(timezone.utc))
     session.add(article)
     session.flush()
@@ -32,11 +32,11 @@ def _add_article(session, url="https://a.com/1"):
 
 
 GOOD = json.dumps({
-    "themes": [{"name": "AI Infrastructure", "confidence": 0.92}],
+    "themes": [{"name": "Cloud Software", "confidence": 0.92}],
     "companies": [
-        {"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 8},
+        {"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 8},
     ],
-    "reason": "Datacentre expansion increases AI chip demand.",
+    "reason": "Cloud revenue growth beats expectations.",
 })
 
 
@@ -51,7 +51,7 @@ def test_classifies_and_marks_processed(session):
     assert session.get(Article, article.id).processed is True
     assert session.query(ArticleTheme).count() == 1
     assert session.query(ArticleCompany).count() == 1
-    assert session.query(Company).filter_by(ticker="NVDA").count() == 1
+    assert session.query(Company).filter_by(ticker="MSFT").count() == 1
     log = session.query(ClassificationLog).one()
     assert log.parsed_ok is True
 
@@ -62,7 +62,7 @@ def test_company_dedup_across_articles(session):
     _add_article(session, "https://a.com/2")
     variant = json.dumps({
         "themes": [],
-        "companies": [{"name": "Nvidia Corp", "ticker": "NVDA",
+        "companies": [{"name": "Microsoft Corp", "ticker": "MSFT",
                        "sentiment": "neutral", "importance": 3}],
         "reason": "x",
     })
@@ -70,7 +70,7 @@ def test_company_dedup_across_articles(session):
 
     _service(session).classify_batch(client, "m", "low")
 
-    assert session.query(Company).filter_by(ticker="NVDA").count() == 1
+    assert session.query(Company).filter_by(ticker="MSFT").count() == 1
 
 
 def test_unknown_theme_is_skipped(session):
@@ -104,12 +104,12 @@ def test_each_company_gets_its_own_sentiment_and_importance(session):
     seed_taxonomy(session)
     article = _add_article(session)
     payload = json.dumps({
-        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
+        "themes": [{"name": "Cloud Software", "confidence": 0.9}],
         "companies": [
-            {"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 9},
+            {"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 9},
             {"name": "AMD", "ticker": "AMD", "sentiment": "negative", "importance": 5},
         ],
-        "reason": "NVIDIA takes share from AMD.",
+        "reason": "Microsoft takes share from AMD.",
     })
     client = FakeClaudeClient([payload])
 
@@ -121,7 +121,7 @@ def test_each_company_gets_its_own_sentiment_and_importance(session):
         .join(Company, Company.id == ArticleCompany.company_id)
         .filter(ArticleCompany.article_id == article.id)
     }
-    assert rows == {"NVDA": ("positive", 9), "AMD": ("negative", 5)}
+    assert rows == {"MSFT": ("positive", 9), "AMD": ("negative", 5)}
 
 
 def test_log_records_classifying_model(session):
@@ -192,8 +192,8 @@ def test_duplicate_company_in_one_article_stored_once(session):
     payload = json.dumps({
         "themes": [],
         "companies": [
-            {"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 7},
-            {"name": "Nvidia Corp", "ticker": "NVDA",  # same company
+            {"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 7},
+            {"name": "Microsoft Corp", "ticker": "MSFT",  # same company
              "sentiment": "positive", "importance": 7},
         ],
         "reason": "x",
@@ -205,7 +205,7 @@ def test_duplicate_company_in_one_article_stored_once(session):
     assert n == 1
     assert session.get(Article, article.id).processed is True
     assert session.query(ArticleCompany).count() == 1
-    assert session.query(Company).filter_by(ticker="NVDA").count() == 1
+    assert session.query(Company).filter_by(ticker="MSFT").count() == 1
 
 
 def test_duplicate_theme_in_one_article_stored_once(session):
@@ -213,8 +213,8 @@ def test_duplicate_theme_in_one_article_stored_once(session):
     article = _add_article(session)
     payload = json.dumps({
         "themes": [
-            {"name": "AI Infrastructure", "confidence": 0.9},
-            {"name": "AI Infrastructure", "confidence": 0.5},  # repeated
+            {"name": "Cloud Software", "confidence": 0.9},
+            {"name": "Cloud Software", "confidence": 0.5},  # repeated
         ],
         "companies": [], "reason": "x",
     })
@@ -232,7 +232,7 @@ def test_out_of_range_importance_is_dropped(session):
     article = _add_article(session)
     payload = json.dumps({
         "themes": [],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA",
+        "companies": [{"name": "Microsoft", "ticker": "MSFT",
                        "sentiment": "positive", "importance": 12}],  # > 10
         "reason": "x",
     })
@@ -251,7 +251,7 @@ def test_invalid_sentiment_is_dropped(session):
     article = _add_article(session)
     payload = json.dumps({
         "themes": [],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA",
+        "companies": [{"name": "Microsoft", "ticker": "MSFT",
                        "sentiment": "mixed", "importance": 6}],  # not in enum
         "reason": "x",
     })

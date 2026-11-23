@@ -1,5 +1,5 @@
 {
-  "cnbc": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-  "guardian_business": "https://www.theguardian.com/uk/business/rss",
-  "bbc_business": "https://feeds.bbci.co.uk/news/business/rss.xml"
+  "npr_business": "https://feeds.npr.org/1006/rss.xml",
+  "cbs_moneywatch": "https://www.cbsnews.com/latest/rss/moneywatch",
+  "abc_business": "https://abcnews.go.com/abcnews/businessheadlines"
 }

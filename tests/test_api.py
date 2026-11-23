@@ -31,20 +31,20 @@ def test_daily_report(client, session):
     session.add(art)
     session.flush()
     store_classification(session, art, {
-        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 8}],
+        "themes": [{"name": "Cloud Software", "confidence": 0.9}],
+        "companies": [{"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 8}],
     })
 
     resp = client.get("/report/daily")
     assert resp.status_code == 200
-    assert "AI Infrastructure" in resp.json()["narratives"]
+    assert "Cloud Software" in resp.json()["narratives"]
 
 
 def test_single_theme_report(client, session):
     seed_taxonomy(session)
-    resp = client.get("/report/AI Infrastructure")
+    resp = client.get("/report/Cloud Software")
     assert resp.status_code == 200
-    assert resp.json()["theme"] == "AI Infrastructure"
+    assert resp.json()["theme"] == "Cloud Software"
 
 
 def test_single_theme_report_includes_company_count_and_company_fields(client, session):
@@ -54,12 +54,12 @@ def test_single_theme_report_includes_company_count_and_company_fields(client, s
     session.add(art)
     session.flush()
     store_classification(session, art, {
-        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 8}],
+        "themes": [{"name": "Cloud Software", "confidence": 0.9}],
+        "companies": [{"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 8}],
     })
     session.flush()
 
-    body = client.get("/report/AI Infrastructure").json()
+    body = client.get("/report/Cloud Software").json()
     assert body["company_count"] == 1
     company = body["top_companies"][0]
     assert company["mentions"] == 1
@@ -77,12 +77,12 @@ def test_single_theme_report_includes_wow_growth(client, session):
         session.add(art)
         session.flush()
         store_classification(session, art, {
-            "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-            "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 7}],
+            "themes": [{"name": "Cloud Software", "confidence": 0.9}],
+            "companies": [{"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 7}],
         })
     session.flush()
 
-    body = client.get("/report/AI Infrastructure").json()
+    body = client.get("/report/Cloud Software").json()
     assert body["wow_growth_pct"] == 100.0
 
 

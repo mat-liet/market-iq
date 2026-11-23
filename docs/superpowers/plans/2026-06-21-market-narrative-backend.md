@@ -675,13 +675,13 @@ from app.db.models import Theme
 
 
 def test_taxonomy_has_three_themes():
-    assert set(TAXONOMY) == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+    assert set(TAXONOMY) == {"Cloud Software", "Consumer Credit", "Housing Market"}
 
 
 def test_seed_inserts_themes(session):
     seed_taxonomy(session)
     names = {t.name for t in session.query(Theme).all()}
-    assert names == {"AI Infrastructure", "Nuclear Energy", "Defence Spending"}
+    assert names == {"Cloud Software", "Consumer Credit", "Housing Market"}
 
 
 def test_seed_is_idempotent(session):
@@ -703,20 +703,14 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.models import Theme
 
 TAXONOMY = {
-    "AI Infrastructure": [
-        "artificial intelligence", "LLM", "large language model",
-        "GPU", "datacentre", "data center", "inference",
-        "foundation model", "AI chips", "NVIDIA", "accelerator",
+    "Cloud Software": [
+        "cloud computing", "SaaS", "subscription software", "enterprise software", "cloud migration",
     ],
-    "Nuclear Energy": [
-        "uranium", "SMR", "small modular reactor",
-        "nuclear power", "reactor", "nuclear energy",
-        "enriched uranium", "nuclear plant",
+    "Consumer Credit": [
+        "credit card debt", "delinquencies", "consumer loans", "buy now pay later", "credit spreads",
     ],
-    "Defence Spending": [
-        "defence budget", "defense budget", "military spending",
-        "missile systems", "defence contracts", "defense contracts",
-        "NATO spending", "military procurement", "arms",
+    "Housing Market": [
+        "mortgage rates", "home sales", "housing starts", "home prices", "homebuilders",
     ],
 }
 
@@ -1050,9 +1044,9 @@ from app.services.llm import build_prompt, parse_response, call_with_retry
 
 def test_prompt_includes_all_taxonomy_themes():
     prompt = build_prompt({"title": "T", "body": "B"})
-    assert "AI Infrastructure" in prompt
-    assert "Nuclear Energy" in prompt
-    assert "Defence Spending" in prompt
+    assert "Cloud Software" in prompt
+    assert "Consumer Credit" in prompt
+    assert "Housing Market" in prompt
     assert "T" in prompt and "B" in prompt
 
 
@@ -1452,7 +1446,7 @@ from tests.fixtures import FakeGeminiClient
 
 
 def _add_article(session, url="https://a.com/1"):
-    article = Article(url=url, title="AI news", body="NVIDIA datacentre expansion",
+    article = Article(url=url, title="Cloud news", body="Azure revenue growth accelerates",
                       source="reuters", published_at=datetime.now(timezone.utc))
     session.add(article)
     session.flush()
@@ -1460,11 +1454,11 @@ def _add_article(session, url="https://a.com/1"):
 
 
 GOOD = json.dumps({
-    "themes": [{"name": "AI Infrastructure", "confidence": 0.92}],
+    "themes": [{"name": "Cloud Software", "confidence": 0.92}],
     "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
     "sentiment": "positive",
     "importance": 8,
-    "reason": "Datacentre expansion increases AI chip demand.",
+    "reason": "Cloud revenue growth beats expectations.",
 })
 
 
@@ -1806,7 +1800,7 @@ def test_wow_growth_handles_zero_last_week():
     assert wow_growth_pct(this_week=5, last_week=0) == 500.0  # divides by max(0,1)
 
 
-def _article(session, url, days_ago, theme="AI Infrastructure",
+def _article(session, url, days_ago, theme="Cloud Software",
              company=("NVIDIA", "NVDA")):
     art = Article(url=url, title="t", body="b", source="reuters",
                   published_at=NOW - timedelta(days=days_ago))
@@ -1826,7 +1820,7 @@ def test_count_articles_in_window(session):
     _article(session, "u2", days_ago=2)
     _article(session, "u3", days_ago=10)  # outside the 7-day window
 
-    count = count_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    count = count_articles(session, "Cloud Software", NOW - timedelta(days=7), NOW)
     assert count == 2
 
 
@@ -1837,7 +1831,7 @@ def test_emerging_association_excludes_prior_companies(session):
     # Eaton appears this week only -> emerging
     _article(session, "new", days_ago=1, company=("Eaton", "ETN"))
 
-    emerging = emerging_associations(session, "AI Infrastructure", now=NOW)
+    emerging = emerging_associations(session, "Cloud Software", now=NOW)
     names = {row["name"] for row in emerging}
     assert "Eaton" in names
     assert "NVIDIA" not in names
@@ -1848,8 +1842,8 @@ def test_generate_report_shape(session):
     _article(session, "u1", days_ago=1)
 
     report = generate_report(session, now=NOW)
-    assert "AI Infrastructure" in report["narratives"]
-    ai = report["narratives"]["AI Infrastructure"]
+    assert "Cloud Software" in report["narratives"]
+    ai = report["narratives"]["Cloud Software"]
     assert ai["article_count"] == 1
     assert "wow_growth_pct" in ai
     assert "top_companies" in ai
@@ -2033,21 +2027,21 @@ def test_daily_report(client, session):
     session.add(art)
     session.flush()
     store_classification(session, art, {
-        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
+        "themes": [{"name": "Cloud Software", "confidence": 0.9}],
         "companies": [{"name": "NVIDIA", "ticker": "NVDA"}],
         "sentiment": "positive", "importance": 8,
     })
 
     resp = client.get("/report/daily")
     assert resp.status_code == 200
-    assert "AI Infrastructure" in resp.json()["narratives"]
+    assert "Cloud Software" in resp.json()["narratives"]
 
 
 def test_single_theme_report(client, session):
     seed_taxonomy(session)
-    resp = client.get("/report/AI Infrastructure")
+    resp = client.get("/report/Cloud Software")
     assert resp.status_code == 200
-    assert resp.json()["theme"] == "AI Infrastructure"
+    assert resp.json()["theme"] == "Cloud Software"
 
 
 def test_unknown_theme_returns_404(client, session):
