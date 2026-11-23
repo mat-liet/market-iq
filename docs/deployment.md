@@ -97,13 +97,61 @@ Hetzner's own server backups are a cheap second layer. To restore:
 gunzip -c backups/<file>.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U market market_narrative
 ```
 
+## 6. Automatic deploys
+
+Once the server runs, every push to `main` that passes CI is deployed by the
+`deploy` job in `.github/workflows/ci.yml`. The job connects over SSH and runs
+`deploy/deploy.sh` with the tested commit. That script:
+
+- refuses anything that isn't a commit on `origin/main`;
+- over SSH, refuses a commit older than the one running, so a leaked key can't roll
+  the server back to an older release;
+- rebuilds and restarts the stack, then waits for the app's healthcheck;
+- if the app doesn't become healthy within two minutes, restores the previous
+  commit and fails the job. GitHub emails you when that happens.
+
+Actions logs are public on a public repository, so the script never prints
+application logs. Read them on the server. Migrations run on container start, so a
+rollback doesn't undo a schema change. The nightly backups cover that case.
+
+One-time setup, from your machine, after the first manual start (step 4):
+
+```bash
+# A key used only by GitHub Actions
+ssh-keygen -t ed25519 -f ~/.ssh/market_iq_deploy -N "" -C github-actions-deploy
+
+# Install it on the server restricted to the deploy script: no shell, no
+# forwarding. Whatever command the client sends arrives as the commit argument.
+echo "command=\"/opt/market-iq/deploy/deploy.sh\",restrict $(cat ~/.ssh/market_iq_deploy.pub)" \
+  | ssh root@<server-ip> 'cat >> ~/.ssh/authorized_keys'
+
+# Hand GitHub the key, the host, and the server's host key, read over your
+# existing (already trusted) SSH connection rather than scanned blind
+gh secret set DEPLOY_SSH_KEY < ~/.ssh/market_iq_deploy
+gh variable set DEPLOY_HOST --body "<server-ip>"
+gh variable set DEPLOY_KNOWN_HOSTS --body \
+  "<server-ip> $(ssh root@<server-ip> cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+
+# Check the restriction: the first command deploys main again, the second is refused
+ssh -i ~/.ssh/market_iq_deploy root@<server-ip> "$(git rev-parse origin/main)"
+ssh -i ~/.ssh/market_iq_deploy root@<server-ip> ls
+
+# GitHub holds the only copy it needs; remove the local one
+rm ~/.ssh/market_iq_deploy
+```
+
+The deploy job is skipped until `DEPLOY_HOST` is set. To approve each deploy by
+hand instead, add a required reviewer to the `production` environment under
+**Settings → Environments**. To pause deploys, delete the `DEPLOY_HOST` variable.
+
 ## Day-to-day
 
 | Task | Command (from `/opt/market-iq`) |
 |---|---|
 | Follow logs | `docker compose -f docker-compose.prod.yml logs -f app` |
 | Change feeds or taxonomy | edit `config/*.json`, then `docker compose -f docker-compose.prod.yml restart app` |
-| Deploy new code | `git pull && docker compose -f docker-compose.prod.yml up -d --build` |
+| Deploy new code | automatic on merge to `main` (or by hand: `./deploy/deploy.sh`) |
+| Roll back | `./deploy/deploy.sh <older-commit-sha>` (by hand only; CI only deploys forward) |
 | Spot-check classifications | `docker compose -f docker-compose.prod.yml exec app python -m scripts.review_classifications` |
 | Sentiment vs. stock moves | `docker compose -f docker-compose.prod.yml exec app python -m scripts.sentiment_report` |
 | Stop (data kept) | `docker compose -f docker-compose.prod.yml down` |

@@ -54,3 +54,29 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  # Deploy the tested commit to the production server. Runs only on pushes to
+  # main, after both test jobs pass, and only once the DEPLOY_HOST repository
+  # variable is set. The SSH key can only trigger deploy/deploy.sh on the server
+  # (forced command), which deploys exactly this commit or rolls back.
+  deploy:
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "root@$HOST" "$GITHUB_SHA"
