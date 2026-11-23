@@ -8,11 +8,14 @@ from app.config import Settings
 from app.db.session import SessionLocal
 from app.repositories.article import ArticleRepository
 from app.repositories.company import CompanyRepository
+from app.repositories.outcome import OutcomeRepository
 from app.repositories.theme import ThemeRepository
 from app.services.body_extractor import TrafilaturaExtractor
 from app.services.classification import ClassificationService
 from app.services.companies import CompanyService
 from app.services.ingestion import RSS_SOURCES, IngestionService, fetch_feed
+from app.services.outcomes import OutcomeService
+from app.services.prices import YahooPriceSource
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +58,18 @@ def run_classification() -> None:
         service.classify_batch(client, settings.claude_model, settings.claude_effort)
 
 
+def run_outcomes() -> None:
+    with SessionLocal() as session:
+        service = OutcomeService(OutcomeRepository(session), session, YahooPriceSource())
+        written = service.evaluate()
+        logger.info("sentiment outcomes: %d rows written", written)
+
+
 def build_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler()
     scheduler.add_job(run_ingestion, "interval", minutes=30, id="ingestion")
     scheduler.add_job(run_classification, "interval", minutes=15, id="classification")
+    # After the US close (21:00 UTC in winter, 20:00 in summer), on trading weekdays.
+    scheduler.add_job(run_outcomes, "cron", day_of_week="mon-fri", hour=22, minute=30,
+                      timezone="UTC", id="outcomes")
     return scheduler

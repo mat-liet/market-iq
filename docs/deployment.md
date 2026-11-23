@@ -105,6 +105,7 @@ gunzip -c backups/<file>.sql.gz | docker compose -f docker-compose.prod.yml exec
 | Change feeds or taxonomy | edit `config/*.json`, then `docker compose -f docker-compose.prod.yml restart app` |
 | Deploy new code | `git pull && docker compose -f docker-compose.prod.yml up -d --build` |
 | Spot-check classifications | `docker compose -f docker-compose.prod.yml exec app python -m scripts.review_classifications` |
+| Sentiment vs. stock moves | `docker compose -f docker-compose.prod.yml exec app python -m scripts.sentiment_report` |
 | Stop (data kept) | `docker compose -f docker-compose.prod.yml down` |
 
 ## Cost control

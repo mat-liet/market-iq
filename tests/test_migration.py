@@ -28,6 +28,7 @@ def test_migration_applies_cleanly():
     assert {
         "articles", "themes", "companies",
         "article_themes", "article_companies", "classification_log",
+        "price_tickers", "price_bars", "sentiment_outcomes",
     }.issubset(tables)
 
 

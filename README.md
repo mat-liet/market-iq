@@ -132,12 +132,13 @@ ENABLE_SCHEDULER=false uvicorn app.main:app --reload
 
 ### Running the workers manually
 
-The scheduler (`app/workers/scheduler.py`) normally runs both workers on intervals
+The scheduler (`app/workers/scheduler.py`) normally runs the workers on a schedule
 inside the API process. To trigger a single pass by hand:
 
 ```bash
 python -c "from app.workers.scheduler import run_ingestion; run_ingestion()"
 python -c "from app.workers.scheduler import run_classification; run_classification()"
+python -c "from app.workers.scheduler import run_outcomes; run_outcomes()"
 ```
 
 ### Reviewing classification quality
@@ -148,6 +149,35 @@ their stored themes/companies/sentiment for manual spot-checking:
 ```bash
 python -m scripts.review_classifications
 ```
+
+### Checking sentiment against stock prices
+
+A third scheduled job (weekdays, 22:30 UTC, after the US close) scores each stored
+company sentiment against what the stock did next, using daily prices from Yahoo
+Finance's public chart endpoint. For every mention with a ticker it records the
+stock's return **minus SPY's** over the same dates (the abnormal return), for:
+
+- **reaction**: the close before publication to the close of the event day. An
+  article published after 16:00 exchange time belongs to the next session.
+- **drift 1d / 5d / 20d**: the event-day close to the close 1, 5 or 20 trading days
+  later. This is the part that tests whether a narrative was priced in yet.
+
+Results land in `sentiment_outcomes`, and prices are cached in `price_bars`.
+Tickers the model writes with an exchange prefix (`NASDAQ:NVDA`, `LON:RR`) are
+mapped to the price source's symbols. Tickers that can't be mapped, or that the
+source doesn't know, are skipped and counted. To read the results:
+
+```bash
+python -m scripts.sentiment_report             # summary from stored outcomes
+python -m scripts.sentiment_report --evaluate  # fetch prices and score first
+```
+
+The report gives n, mean and median abnormal return, and hit rate per sentiment for
+each window. It also shows the positive-minus-negative spread overall, by importance
+band and by narrative. When several articles mention the same company on the same
+day, only the highest-importance mention counts, since they share one price move.
+Outcomes are computed from historical prices, so the job also scores articles
+collected before it was first run.
 
 ### Dashboard (frontend)
 
@@ -205,7 +235,7 @@ OpenAPI/Swagger UI is served at `/docs`.
 
 ## Data model
 
-PostgreSQL, managed by Alembic (`alembic/versions/0002_classification_log_model.py` is head).
+PostgreSQL, managed by Alembic (`alembic/versions/0003_sentiment_outcomes.py` is head).
 
 - **`articles`** — raw ingested news (`url` unique, `processed` flag drives the queue)
 - **`themes`** — the fixed narrative taxonomy (seeded; the LLM may not invent themes)
@@ -215,6 +245,10 @@ PostgreSQL, managed by Alembic (`alembic/versions/0002_classification_log_model.
   (`positive`/`negative`/`neutral`, enforced by `ck_sentiment`) and `importance`
   (1–10, enforced by `ck_importance`)
 - **`classification_log`** — every LLM response (raw + `parsed_ok` + `model`) for auditing
+- **`price_tickers`** / **`price_bars`** — price symbols looked up (`ok`/`not_found`,
+  exchange timezone) and their cached daily adjusted closes
+- **`sentiment_outcomes`** — per mention and horizon (0 = reaction, n = n-day drift):
+  stock, SPY and abnormal return over the dated window
 
 The migration is the source of truth for the schema; `tests/test_migration.py`
 asserts the constraints and indexes the application relies on so drift is caught.
@@ -253,12 +287,14 @@ app/
   main.py              app factory + scheduler lifespan + error handlers
   config.py            env-driven Settings
   db/                  SQLAlchemy models + session
-  repositories/        data access only — report, theme, company, article
+  repositories/        data access only — report, theme, company, article, outcome
   services/            business logic — report, companies, taxonomy, classification,
-                       ingestion (+ pure helpers: llm, body_extractor, config_files)
+                       ingestion, outcomes (+ helpers: llm, body_extractor,
+                       config_files, prices)
   workers/             scheduler orchestration
-alembic/               migrations (0002 = head)
-scripts/               seed_taxonomy, review_classifications, check_feeds
+alembic/               migrations (0003 = head)
+scripts/               seed_taxonomy, review_classifications, check_feeds,
+                       sentiment_report
 config/                feeds + taxonomy (only *.example.json committed)
 deploy/                Caddyfile + database backup script for docker-compose.prod.yml
 tests/                 pytest suite (Postgres-backed)
