@@ -9,3 +9,4 @@ trafilatura==2.0.0
 anthropic==1.8.0
 pytest==8.3.4
 httpx==0.28.1
+tzdata==2025.2

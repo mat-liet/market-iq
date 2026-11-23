@@ -5,17 +5,25 @@ from app.services.ingestion import IngestionService
 from app.workers.scheduler import build_scheduler, run_ingestion
 
 
-def test_scheduler_registers_two_jobs():
+def test_scheduler_registers_jobs():
     sched = build_scheduler()
     job_ids = {job.id for job in sched.get_jobs()}
-    assert job_ids == {"ingestion", "classification"}
+    assert job_ids == {"ingestion", "classification", "outcomes"}
 
 
 def test_job_intervals():
     sched = build_scheduler()
-    intervals = {job.id: job.trigger.interval.total_seconds() for job in sched.get_jobs()}
+    intervals = {job.id: job.trigger.interval.total_seconds()
+                 for job in sched.get_jobs() if job.id != "outcomes"}
     assert intervals["ingestion"] == 30 * 60
     assert intervals["classification"] == 15 * 60
+
+
+def test_outcomes_run_after_the_us_close_on_weekdays():
+    job = build_scheduler().get_job("outcomes")
+    fields = {f.name: str(f) for f in job.trigger.fields}
+    assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("mon-fri", "22", "30")
+    assert str(job.trigger.timezone) == "UTC"
 
 
 def test_run_ingestion_isolates_failing_feed(caplog):
