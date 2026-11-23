@@ -1,20 +1,7 @@
-TAXONOMY = {
-    "AI Infrastructure": [
-        "artificial intelligence", "LLM", "large language model",
-        "GPU", "datacentre", "data center", "inference",
-        "foundation model", "AI chips", "NVIDIA", "accelerator",
-    ],
-    "Nuclear Energy": [
-        "uranium", "SMR", "small modular reactor",
-        "nuclear power", "reactor", "nuclear energy",
-        "enriched uranium", "nuclear plant",
-    ],
-    "Defence Spending": [
-        "defence budget", "defense budget", "military spending",
-        "missile systems", "defence contracts", "defense contracts",
-        "NATO spending", "military procurement", "arms",
-    ],
-}
+from app.services.config_files import load_taxonomy
+
+# Narrative taxonomy, loaded from TAXONOMY_FILE (see app/services/config_files.py).
+TAXONOMY = load_taxonomy()
 
 
 class TaxonomyService:

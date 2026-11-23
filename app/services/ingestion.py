@@ -3,15 +3,12 @@ from datetime import datetime, timezone
 import feedparser
 
 from app.services.body_extractor import BodyExtractor
+from app.services.config_files import load_feeds
 
-# Config-driven feeds. NOTE: these URLs are NOT guaranteed live — feed paths
-# shift over time. Verify with verify_feed() before relying on any of them;
-# swap in working financial-news feeds as needed.
-RSS_SOURCES = {
-    "cnbc": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    "yahoo": "https://finance.yahoo.com/rss/",
-    "marketwatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
-}
+# Feed list, loaded from FEEDS_FILE (see app/services/config_files.py). Feed paths
+# shift over time: run `python -m scripts.check_feeds` to confirm each one is live
+# and yields extractable article text.
+RSS_SOURCES = load_feeds()
 
 
 def fetch_feed(feed_url: str) -> list[dict]:

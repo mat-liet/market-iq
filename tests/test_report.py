@@ -49,8 +49,8 @@ def test_weighted_sentiment_skips_nulls_and_empty():
     assert weighted_sentiment([(None, 5), ("positive", None)]) == (None, None)
 
 
-def _article(session, url, days_ago, theme="AI Infrastructure",
-             company=("NVIDIA", "NVDA")):
+def _article(session, url, days_ago, theme="Cloud Software",
+             company=("Microsoft", "MSFT")):
     art = Article(url=url, title="t", body="b", source="reuters",
                   published_at=NOW - timedelta(days=days_ago))
     session.add(art)
@@ -90,30 +90,30 @@ def test_count_articles_in_window(session, report_service):
     _article(session, "u2", days_ago=2)
     _article(session, "u3", days_ago=10)  # outside the 7-day window
 
-    count = report_service.count_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
+    count = report_service.count_articles("Cloud Software", NOW - timedelta(days=7), NOW)
     assert count == 2
 
 
 def test_emerging_association_excludes_prior_companies(session, report_service):
     seed_taxonomy(session)
-    # NVIDIA appeared 14 days ago (prior window) -> NOT emerging
-    _article(session, "old", days_ago=14, company=("NVIDIA", "NVDA"))
-    # Eaton appears this week only -> emerging
-    _article(session, "new", days_ago=1, company=("Eaton", "ETN"))
+    # Microsoft appeared 14 days ago (prior window) -> NOT emerging
+    _article(session, "old", days_ago=14, company=("Microsoft", "MSFT"))
+    # Snowflake appears this week only -> emerging
+    _article(session, "new", days_ago=1, company=("Snowflake", "SNOW"))
 
-    emerging = report_service.emerging_associations("AI Infrastructure", now=NOW)
+    emerging = report_service.emerging_associations("Cloud Software", now=NOW)
     names = {row["company"] for row in emerging}
-    assert "Eaton" in names
-    assert "NVIDIA" not in names
+    assert "Snowflake" in names
+    assert "Microsoft" not in names
 
 
 def test_top_companies_includes_avg_sentiment_and_importance(session, report_service):
     seed_taxonomy(session)
-    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
-    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 6)])
+    _tag(session, "a1", 1, "Cloud Software", [("Microsoft", "MSFT", "positive", 8)])
+    _tag(session, "a2", 2, "Cloud Software", [("Microsoft", "MSFT", "positive", 6)])
 
-    rows = report_service.top_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
-    nvda = next(r for r in rows if r["ticker"] == "NVDA")
+    rows = report_service.top_companies("Cloud Software", NOW - timedelta(days=7), NOW)
+    nvda = next(r for r in rows if r["ticker"] == "MSFT")
     assert nvda["mentions"] == 2
     assert nvda["avg_importance"] == 7.0       # (8 + 6) / 2
     assert nvda["avg_sentiment"] == "positive"
@@ -123,41 +123,41 @@ def test_top_companies_includes_avg_sentiment_and_importance(session, report_ser
 def test_top_companies_sentiment_is_importance_weighted(session, report_service):
     seed_taxonomy(session)
     # equal-but-opposite importance nets to zero -> neutral (within deadband)
-    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
-    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "negative", 8)])
+    _tag(session, "a1", 1, "Cloud Software", [("Microsoft", "MSFT", "positive", 8)])
+    _tag(session, "a2", 2, "Cloud Software", [("Microsoft", "MSFT", "negative", 8)])
 
-    rows = report_service.top_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
-    nvda = next(r for r in rows if r["ticker"] == "NVDA")
+    rows = report_service.top_companies("Cloud Software", NOW - timedelta(days=7), NOW)
+    nvda = next(r for r in rows if r["ticker"] == "MSFT")
     assert nvda["sentiment_score"] == 0.0
     assert nvda["avg_sentiment"] == "neutral"
 
 
 def test_emerging_includes_first_seen_and_company(session, report_service):
     seed_taxonomy(session)
-    _tag(session, "e1", 3, "AI Infrastructure", [("Eaton", "ETN", "positive", 6)])
+    _tag(session, "e1", 3, "Cloud Software", [("Snowflake", "SNOW", "positive", 6)])
 
-    emerging = report_service.emerging_associations("AI Infrastructure", now=NOW)
-    eaton = next(r for r in emerging if r["ticker"] == "ETN")
-    assert eaton["company"] == "Eaton"
-    assert eaton["first_seen"].startswith("2026-06-18")  # NOW - 3 days
+    emerging = report_service.emerging_associations("Cloud Software", now=NOW)
+    snow = next(r for r in emerging if r["ticker"] == "SNOW")
+    assert snow["company"] == "Snowflake"
+    assert snow["first_seen"].startswith("2026-06-18")  # NOW - 3 days
 
 
 def test_count_companies_distinct_in_window(session, report_service):
     seed_taxonomy(session)
-    _tag(session, "c1", 1, "AI Infrastructure",
-         [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "neutral", 5)])
-    _tag(session, "c2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 7)])
+    _tag(session, "c1", 1, "Cloud Software",
+         [("Microsoft", "MSFT", "positive", 8), ("Snowflake", "SNOW", "neutral", 5)])
+    _tag(session, "c2", 2, "Cloud Software", [("Microsoft", "MSFT", "positive", 7)])
 
-    n = report_service.count_companies("AI Infrastructure", NOW - timedelta(days=7), NOW)
-    assert n == 2  # NVIDIA + Eaton, counted once each
+    n = report_service.count_companies("Cloud Software", NOW - timedelta(days=7), NOW)
+    assert n == 2  # Microsoft + Snowflake, counted once each
 
 
 def test_top_articles_includes_source_published_and_sentiment(session, report_service):
     seed_taxonomy(session)
-    _tag(session, "art1", 1, "AI Infrastructure",
-         [("NVIDIA", "NVDA", "positive", 8)], source="cnbc")
+    _tag(session, "art1", 1, "Cloud Software",
+         [("Microsoft", "MSFT", "positive", 8)], source="cnbc")
 
-    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("Cloud Software", NOW - timedelta(days=7), NOW)
     r = rows[0]
     assert r["source"] == "cnbc"
     assert r["published_at"].startswith("2026-06-20")  # NOW - 1 day
@@ -167,24 +167,24 @@ def test_top_articles_includes_source_published_and_sentiment(session, report_se
 
 def test_top_articles_sentiment_from_driving_mention(session, report_service):
     seed_taxonomy(session)
-    # NVIDIA is the highest-importance mention -> it drives BOTH importance and sentiment
-    _tag(session, "art1", 1, "AI Infrastructure",
-         [("NVIDIA", "NVDA", "positive", 9), ("Eaton", "ETN", "negative", 3)])
+    # Microsoft is the highest-importance mention -> it drives BOTH importance and sentiment
+    _tag(session, "art1", 1, "Cloud Software",
+         [("Microsoft", "MSFT", "positive", 9), ("Snowflake", "SNOW", "negative", 3)])
 
-    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("Cloud Software", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 9
-    assert rows[0]["sentiment"] == "positive"   # from NVIDIA, not a majority vote
+    assert rows[0]["sentiment"] == "positive"   # from Microsoft, not a majority vote
 
 
 def test_top_articles_importance_tie_broken_by_company_name(session, report_service):
     seed_taxonomy(session)
-    # equal importance -> deterministic tiebreak by company name ASC (Eaton < NVIDIA)
-    _tag(session, "art1", 1, "AI Infrastructure",
-         [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "negative", 8)])
+    # equal importance -> deterministic tiebreak by company name ASC (Microsoft < Snowflake)
+    _tag(session, "art1", 1, "Cloud Software",
+         [("Snowflake", "SNOW", "positive", 8), ("Microsoft", "MSFT", "negative", 8)])
 
-    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("Cloud Software", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 8
-    assert rows[0]["sentiment"] == "negative"   # Eaton wins the tie
+    assert rows[0]["sentiment"] == "negative"   # Microsoft wins the tie
 
 
 def test_top_articles_dedups_multi_company_article(session, report_service):
@@ -195,13 +195,13 @@ def test_top_articles_dedups_multi_company_article(session, report_service):
     session.add(art)
     session.flush()
     store_classification(session, art, {
-        "themes": [{"name": "AI Infrastructure", "confidence": 0.9}],
-        "companies": [{"name": "NVIDIA", "ticker": "NVDA", "sentiment": "positive", "importance": 7},
-                      {"name": "Eaton", "ticker": "ETN", "sentiment": "positive", "importance": 7}],
+        "themes": [{"name": "Cloud Software", "confidence": 0.9}],
+        "companies": [{"name": "Microsoft", "ticker": "MSFT", "sentiment": "positive", "importance": 7},
+                      {"name": "Snowflake", "ticker": "SNOW", "sentiment": "positive", "importance": 7}],
     })
     session.flush()
 
-    rows = report_service.top_articles("AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = report_service.top_articles("Cloud Software", NOW - timedelta(days=7), NOW)
     assert [r["url"] for r in rows] == ["multi"]
     assert rows[0]["importance"] == 7
 
@@ -217,8 +217,8 @@ def test_generate_report_shape(session, report_service):
     _article(session, "u1", days_ago=1)
 
     report = report_service.generate_report(now=NOW)
-    assert "AI Infrastructure" in report["narratives"]
-    ai = report["narratives"]["AI Infrastructure"]
+    assert "Cloud Software" in report["narratives"]
+    ai = report["narratives"]["Cloud Software"]
     assert ai["article_count"] == 1
     assert "wow_growth_pct" in ai
     assert "top_companies" in ai

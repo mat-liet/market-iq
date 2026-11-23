@@ -1,3 +1,4 @@
+# Local development stack. For a server deployment use docker-compose.prod.yml.
 services:
   frontend:
     build: ./frontend
@@ -8,6 +9,8 @@ services:
   app:
     build: .
     env_file: .env
+    volumes:
+      - ./config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,6 +22,8 @@ services:
       POSTGRES_USER: market
       POSTGRES_PASSWORD: market
       POSTGRES_DB: market_narrative
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -26,3 +31,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  pgdata:

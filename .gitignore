@@ -6,3 +6,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 .DS_Store
+
+# Deployment-specific feeds and taxonomy (only the examples are committed)
+config/*.json
+!config/*.example.json
+backups/

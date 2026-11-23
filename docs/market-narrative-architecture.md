@@ -301,7 +301,7 @@ Returns JSON:
 {
   "generated_at": "2025-01-20T07:00:00Z",
   "narratives": {
-    "AI Infrastructure": {
+    "Cloud Software": {
       "article_count": 142,
       "wow_growth_pct": 28.0,
       "top_companies": [...],

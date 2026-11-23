@@ -116,25 +116,17 @@ Manually curated starting taxonomy. Expand over time.
 
 ```python
 TAXONOMY = {
-    "AI Infrastructure": [
-        "artificial intelligence", "LLM", "large language model",
-        "GPU", "datacentre", "data center", "inference",
-        "foundation model", "AI chips", "NVIDIA", "accelerator"
+    "Cloud Software": [
+        "cloud computing", "SaaS", "subscription software", "enterprise software", "cloud migration"
     ],
-    "Nuclear Energy": [
-        "uranium", "SMR", "small modular reactor",
-        "nuclear power", "reactor", "nuclear energy",
-        "enriched uranium", "nuclear plant"
+    "Consumer Credit": [
+        "credit card debt", "delinquencies", "consumer loans", "buy now pay later", "credit spreads"
     ],
-    "Defence Spending": [
-        "defence budget", "defense budget", "military spending",
-        "missile systems", "defence contracts", "defense contracts",
-        "NATO spending", "military procurement", "arms"
+    "Housing Market": [
+        "mortgage rates", "home sales", "housing starts", "home prices", "homebuilders"
     ],
 }
 ```
-
-> Both US and UK spellings are included (defence/defense, datacentre/data center). RSS feeds mix both.
 
 ---
 
@@ -325,14 +317,14 @@ def parse_response(raw: str) -> dict | None:
 
 ```json
 {
-  "themes": [{ "name": "AI Infrastructure", "confidence": 0.92 }],
+  "themes": [{ "name": "Cloud Software", "confidence": 0.92 }],
   "companies": [
     { "name": "Microsoft", "ticker": "MSFT" },
-    { "name": "NVIDIA", "ticker": "NVDA" }
+    { "name": "Salesforce", "ticker": "CRM" }
   ],
   "sentiment": "positive",
   "importance": 8,
-  "reason": "Microsoft announces $10bn datacentre expansion, directly increasing demand for AI accelerator chips."
+  "reason": "Azure growth re-accelerates, signalling enterprise cloud budgets are expanding again."
 }
 ```
 
@@ -407,26 +399,26 @@ ORDER BY mention_count DESC;
 ### Example Report Output
 
 ```
-=== AI Infrastructure ===
+=== Cloud Software ===
 Articles this week:  142  (+28% vs last week)
 
 Top companies:
-  1. NVIDIA       (87 mentions)
-  2. Microsoft    (64 mentions)
-  3. AMD          (41 mentions)
-  4. TSMC         (29 mentions)
-  5. Broadcom     (22 mentions)
+  1. Microsoft    (87 mentions)
+  2. Salesforce   (64 mentions)
+  3. Oracle       (41 mentions)
+  4. ServiceNow   (29 mentions)
+  5. Workday      (22 mentions)
 
 Emerging associations:
-  → Eaton Corporation (EATON) — 6 mentions, first appearance in narrative
+  → Snowflake (SNOW) — 6 mentions, first appearance in narrative
 
 Most important articles:
-  [9/10] Microsoft announces $10bn datacentre expansion
-         "Directly increases demand for AI accelerator chips."
-  [8/10] TSMC reports record Q2 revenue driven by AI chip orders
-         "Confirms sustained demand acceleration from hyperscalers."
-  [7/10] EU announces AI infrastructure investment framework
-         "Regulatory tailwind for European datacentre buildout."
+  [9/10] Azure revenue growth re-accelerates
+         "Enterprise cloud budgets are expanding again."
+  [8/10] Salesforce raises full-year subscription guidance
+         "Confirms sustained demand for enterprise software."
+  [7/10] EU proposes cloud sovereignty rules
+         "Regulatory shift that favours providers with EU data residency."
 ```
 
 ---

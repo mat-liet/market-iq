@@ -223,10 +223,10 @@ In `tests/test_report.py`, replace `test_top_companies_includes_avg_sentiment_an
 ```python
 def test_top_companies_includes_avg_sentiment_and_importance(session):
     seed_taxonomy(session)
-    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
-    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 6)])
+    _tag(session, "a1", 1, "Cloud Software", [("NVIDIA", "NVDA", "positive", 8)])
+    _tag(session, "a2", 2, "Cloud Software", [("NVIDIA", "NVDA", "positive", 6)])
 
-    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = top_companies(session, "Cloud Software", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
     assert nvda["mentions"] == 2
     assert nvda["avg_importance"] == 7.0       # (8 + 6) / 2
@@ -237,10 +237,10 @@ def test_top_companies_includes_avg_sentiment_and_importance(session):
 def test_top_companies_sentiment_is_importance_weighted(session):
     seed_taxonomy(session)
     # equal-but-opposite importance nets to zero -> neutral (within deadband)
-    _tag(session, "a1", 1, "AI Infrastructure", [("NVIDIA", "NVDA", "positive", 8)])
-    _tag(session, "a2", 2, "AI Infrastructure", [("NVIDIA", "NVDA", "negative", 8)])
+    _tag(session, "a1", 1, "Cloud Software", [("NVIDIA", "NVDA", "positive", 8)])
+    _tag(session, "a2", 2, "Cloud Software", [("NVIDIA", "NVDA", "negative", 8)])
 
-    rows = top_companies(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = top_companies(session, "Cloud Software", NOW - timedelta(days=7), NOW)
     nvda = next(r for r in rows if r["ticker"] == "NVDA")
     assert nvda["sentiment_score"] == 0.0
     assert nvda["avg_sentiment"] == "neutral"
@@ -343,10 +343,10 @@ In `tests/test_report.py`, replace `test_top_articles_sentiment_tie_is_neutral` 
 def test_top_articles_sentiment_from_driving_mention(session):
     seed_taxonomy(session)
     # NVIDIA is the highest-importance mention -> it drives BOTH importance and sentiment
-    _tag(session, "art1", 1, "AI Infrastructure",
+    _tag(session, "art1", 1, "Cloud Software",
          [("NVIDIA", "NVDA", "positive", 9), ("Eaton", "ETN", "negative", 3)])
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = top_articles(session, "Cloud Software", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 9
     assert rows[0]["sentiment"] == "positive"   # from NVIDIA, not a majority vote
 
@@ -354,10 +354,10 @@ def test_top_articles_sentiment_from_driving_mention(session):
 def test_top_articles_importance_tie_broken_by_company_name(session):
     seed_taxonomy(session)
     # equal importance -> deterministic tiebreak by company name ASC (Eaton < NVIDIA)
-    _tag(session, "art1", 1, "AI Infrastructure",
+    _tag(session, "art1", 1, "Cloud Software",
          [("NVIDIA", "NVDA", "positive", 8), ("Eaton", "ETN", "negative", 8)])
 
-    rows = top_articles(session, "AI Infrastructure", NOW - timedelta(days=7), NOW)
+    rows = top_articles(session, "Cloud Software", NOW - timedelta(days=7), NOW)
     assert rows[0]["importance"] == 8
     assert rows[0]["sentiment"] == "negative"   # Eaton wins the tie
 ```
